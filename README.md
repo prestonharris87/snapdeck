@@ -103,6 +103,13 @@ See [`PROTOCOL.md`](PROTOCOL.md) for the HTTP API and report format.
 macOS and Linux today (POSIX process management). Windows support is planned via
 `psutil`. Requires Python ≥ 3.11.
 
+## Contributing & security
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev setup, layout, the POSIX/psutil rule.
+- [`SECURITY.md`](SECURITY.md) — secret hygiene (the tool is secret-free; a project's
+  `snapdeck.toml` is gitignored here) and the localhost-only network surface.
+- [`CHANGELOG.md`](CHANGELOG.md) — what's changed.
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE).

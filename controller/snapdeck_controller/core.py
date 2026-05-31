@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import __version__
-from .config import Config, ServiceConfig, render
+from .config import Config, render
 from . import paths as _paths
 from .procutil import (
     descendants_of, kill_tree, listener_on_port, listening_ports_of_pid,

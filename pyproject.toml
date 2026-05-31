@@ -45,3 +45,8 @@ packages = ["controller/snapdeck_controller", "mcp/snapdeck_mcp"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
+# E702: compact `stmt; stmt` lines are an intentional style carried over from the
+# original controller (terse state-update / event-emit lines).
+ignore = ["E702"]

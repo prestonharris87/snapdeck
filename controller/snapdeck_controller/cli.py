@@ -288,36 +288,115 @@ def cmd_config_init(args) -> int:
     if dest.exists():
         print(f"{dest} already exists — not overwriting", file=sys.stderr)
         return 1
-    example = Path(__file__).parent.parent.parent / "examples" / "snapdeck.toml"
-    template = example.read_text() if example.exists() else _MINIMAL_TEMPLATE
-    dest.write_text(template)
-    print(f"wrote {dest}\nEdit it to describe your project's services, then run `deck up`.")
+    root = Path.cwd()
+    services = _detect_services(root)
+    name = _detect_project_name(root)
+    text = _render_config_toml(name, services)
+    dest.write_text(text)
+    if services:
+        print(f"wrote {dest}")
+        print("detected: " + ", ".join(f"{s['name']} ({s['kind_label']})" for s in services))
+        print("Review the start commands / ports (they're best guesses), then run `deck up`.")
+    else:
+        print(f"wrote {dest} (generic stub — couldn't detect your stack)")
+        print("Edit it to describe your services, then run `deck up`.")
     return 0
 
 
-_MINIMAL_TEMPLATE = """\
-[project]
-name = "myapp"
+def _detect_project_name(root: Path) -> str:
+    pj = root / "package.json"
+    if pj.exists():
+        try:
+            n = json.loads(pj.read_text()).get("name")
+            if n:
+                return str(n).split("/")[-1]
+        except (OSError, json.JSONDecodeError):
+            pass
+    return root.name or "myapp"
 
-[ports]
-controller = 7777
-step = 10
-max_tries = 30
 
-[services.app]
-cwd = "."
-start = "npm run dev -- --port {port.http}"
-browsable = true
-[services.app.ports]
-http = 3000
-[services.app.ready]
-kind = "http"
-http_url = "http://localhost:{port.http}"
-primary_port = "http"
+def _detect_services(root: Path) -> list[dict]:
+    services: list[dict] = []
 
-[user_test_reports]
-output_dir = "thoughts/shared/user-test-reports"
-"""
+    pj = root / "package.json"
+    if pj.exists():
+        try:
+            scripts = json.loads(pj.read_text()).get("scripts", {})
+        except (OSError, json.JSONDecodeError):
+            scripts = {}
+        verb = next((v for v in ("dev", "start", "serve") if v in scripts), "dev")
+        if (root / "angular.json").exists() or (root / "nx.json").exists():
+            port, pat, label = 4200, "Compiled successfully|bundle generation complete", "Angular"
+        elif any((root / f).exists() for f in ("next.config.js", "next.config.mjs", "next.config.ts")):
+            port, pat, label = 3000, "Ready in|started server|Local:", "Next.js"
+        elif any((root / f).exists() for f in ("vite.config.js", "vite.config.ts")):
+            port, pat, label = 5173, "Local:|ready in", "Vite"
+        else:
+            port, pat, label = 3000, "Local:|listening|ready", "Node"
+        services.append({
+            "name": "frontend", "cwd": ".", "start": f"npm run {verb} -- --port {{port.http}}",
+            "ports": {"http": port}, "ready": {"kind": "http_log", "http_url": "http://localhost:{port.http}",
+            "log_pattern": pat, "primary_port": "http"}, "browsable": True, "kind_label": label,
+        })
+
+    csproj = next(iter(list(root.glob("*.csproj")) + list(root.glob("*/*.csproj"))), None)
+    if csproj:
+        cwd = "." if csproj.parent == root else csproj.parent.relative_to(root).as_posix()
+        services.append({
+            "name": "backend", "cwd": cwd,
+            "start": 'dotnet run --urls "http://localhost:{port.http}"',
+            "ports": {"http": 5000}, "ready": {"kind": "http_log", "http_url": "http://localhost:{port.http}",
+            "log_pattern": "Now listening on:", "primary_port": "http"},
+            "browsable": not any(s.get("browsable") for s in services), "kind_label": ".NET",
+        })
+
+    if (root / "manage.py").exists():
+        services.append({
+            "name": "django", "cwd": ".", "start": "python manage.py runserver {port.http}",
+            "ports": {"http": 8000}, "ready": {"kind": "http_log", "http_url": "http://localhost:{port.http}",
+            "log_pattern": "Starting development server", "primary_port": "http"},
+            "browsable": not any(s.get("browsable") for s in services), "kind_label": "Django",
+        })
+
+    if not services and any((root / f).exists() for f in ("docker-compose.yml", "compose.yml", "docker-compose.yaml")):
+        services.append({
+            "name": "stack", "cwd": ".", "start": "docker compose up",
+            "ports": {"http": 8080}, "ready": {"kind": "http", "http_url": "http://localhost:{port.http}",
+            "primary_port": "http"}, "browsable": True, "kind_label": "docker compose",
+        })
+    return services
+
+
+def _render_config_toml(name: str, services: list[dict]) -> str:
+    out = [f'[project]\nname = "{name}"\n',
+           "[ports]\ncontroller = 7777\nstep = 10\nmax_tries = 30\n"]
+    if not services:
+        services = [{
+            "name": "app", "cwd": ".", "start": "npm run dev -- --port {port.http}",
+            "ports": {"http": 3000}, "ready": {"kind": "http", "http_url": "http://localhost:{port.http}",
+            "primary_port": "http"}, "browsable": True,
+        }]
+    for s in services:
+        out.append(f"# {s.get('kind_label', 'service')} — verify the start command and port")
+        out.append(f"[services.{s['name']}]")
+        out.append(f'cwd = "{s["cwd"]}"')
+        out.append(f'start = "{s["start"]}"' if '"' not in s["start"] else f"start = '{s['start']}'")
+        if s.get("browsable"):
+            out.append("browsable = true")
+        out.append(f"[services.{s['name']}.ports]")
+        for k, v in s["ports"].items():
+            out.append(f"{k} = {v}")
+        r = s["ready"]
+        out.append(f"[services.{s['name']}.ready]")
+        out.append(f'kind = "{r["kind"]}"')
+        if r.get("http_url"):
+            out.append(f'http_url = "{r["http_url"]}"')
+        if r.get("log_pattern"):
+            out.append(f'log_pattern = "{r["log_pattern"]}"')
+        out.append(f'primary_port = "{r["primary_port"]}"')
+        out.append("")
+    out.append('[user_test_reports]\noutput_dir = "thoughts/shared/user-test-reports"\n')
+    return "\n".join(out)
 
 
 # --- Argument parsing ---------------------------------------------------------

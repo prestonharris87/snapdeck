@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import SnapdeckError
+from . import paths as _paths
 from .paths import CONFIG_FILENAME
 
 _TOKEN_RE = re.compile(r"\{(port\.[A-Za-z0-9_]+|svc\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+)\}")
@@ -104,11 +105,11 @@ class Config:
 
 
 def load(worktree: Path) -> Config:
-    src = worktree / CONFIG_FILENAME
+    src = _paths.config_path(worktree)
+    if src is None:
+        raise SnapdeckError(f"no {CONFIG_FILENAME} at {worktree} (root or .claude/)")
     try:
         raw = tomllib.loads(src.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        raise SnapdeckError(f"no {CONFIG_FILENAME} at {worktree}")
     except (tomllib.TOMLDecodeError, OSError) as e:
         raise SnapdeckError(f"failed to read {src}: {e}")
 

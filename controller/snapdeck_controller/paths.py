@@ -19,23 +19,37 @@ from . import SnapdeckError
 CONFIG_FILENAME = "snapdeck.toml"
 
 
+def config_path(d: Path) -> Path | None:
+    """The snapdeck.toml for a worktree, if present. Checked at the worktree root
+    first, then under ``.claude/`` (so projects that keep tooling config under
+    .claude — e.g. with a shared, symlinked .claude — can tuck it there)."""
+    root = d / CONFIG_FILENAME
+    if root.exists():
+        return root
+    nested = d / ".claude" / CONFIG_FILENAME
+    if nested.exists():
+        return nested
+    return None
+
+
 def resolve_worktree(explicit: str | None = None) -> Path:
-    """Return the worktree root (the dir containing snapdeck.toml).
+    """Return the worktree root (the dir whose snapdeck.toml configures it).
 
     Precedence:
       1. an explicit path (CLI flag),
       2. ``SNAPDECK_WORKTREE`` env (or legacy ``DEV_CONTROLLER_WORKTREE``),
-      3. walk up from the current directory until a snapdeck.toml is found.
+      3. walk up from the current directory until a snapdeck.toml is found
+         (at the dir root or under .claude/).
     """
     env = explicit or os.environ.get("SNAPDECK_WORKTREE") or os.environ.get("DEV_CONTROLLER_WORKTREE")
     if env:
         p = Path(env).absolute()
-        if not (p / CONFIG_FILENAME).exists():
-            raise SnapdeckError(f"{p} has no {CONFIG_FILENAME}")
+        if config_path(p) is None:
+            raise SnapdeckError(f"{p} has no {CONFIG_FILENAME} (root or .claude/)")
         return p
     cur = Path.cwd().absolute()  # NOT .resolve() — preserve symlinked worktree identity
     for d in [cur, *cur.parents]:
-        if (d / CONFIG_FILENAME).exists():
+        if config_path(d) is not None:
             return d
     raise SnapdeckError(
         f"no {CONFIG_FILENAME} found in this directory or any parent.\n"

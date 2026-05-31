@@ -1,0 +1,37 @@
+:root { color-scheme: light dark; }
+body {
+  width: 280px;
+  margin: 0;
+  padding: 12px;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #21232d;
+  color: #e7e9ee;
+}
+.sd-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.sd-logo { color: #aac2dd; font-size: 18px; }
+.sd-title { font-weight: 600; font-size: 15px; flex: 1; }
+.sd-count {
+  background: #2c2f3a; color: #aac2dd; border-radius: 10px;
+  padding: 1px 9px; font-weight: 600; min-width: 16px; text-align: center;
+}
+.sd-label { display: block; font-size: 11px; color: #9aa0ad; margin-bottom: 4px; }
+.sd-note {
+  width: 100%; box-sizing: border-box; margin-bottom: 12px;
+  background: #2c2f3a; border: 1px solid #3a3d4a; color: #e7e9ee;
+  border-radius: 7px; padding: 7px 9px; font: inherit;
+}
+.sd-note:focus { outline: none; border-color: #aac2dd; }
+.sd-btn {
+  width: 100%; box-sizing: border-box; padding: 9px 10px; margin-bottom: 8px;
+  border: 1px solid #3a3d4a; background: #2c2f3a; color: #e7e9ee;
+  border-radius: 8px; font: inherit; cursor: pointer;
+}
+.sd-btn:hover { background: #353948; }
+.sd-primary { background: #e78c3d; border-color: #e78c3d; color: #1b1d25; font-weight: 600; }
+.sd-primary:hover { background: #f0974a; }
+.sd-row { display: flex; gap: 8px; }
+.sd-row .sd-btn { width: auto; flex: 1; }
+.sd-ghost { flex: 0 0 70px; }
+.sd-status { margin-top: 8px; font-size: 12px; min-height: 16px; color: #9aa0ad; word-break: break-word; }
+.sd-status.sd-ok { color: #7bc47f; }
+.sd-status.sd-err { color: #e88; }

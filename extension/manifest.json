@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Snapdeck",
+  "version": "0.1.0",
+  "description": "Freeze, annotate, and file user-test-reports straight from your local dev app.",
+  "permissions": ["activeTab", "tabs", "scripting", "storage", "unlimitedStorage"],
+  "host_permissions": ["http://localhost/*", "http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup/popup.html", "default_title": "Snapdeck" },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["content/capture.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["lib/konva.min.js", "content/bridge.js", "content/editor.js"],
+      "css": ["content/overlay.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

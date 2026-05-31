@@ -74,6 +74,26 @@ def _git(worktree: Path, *args: str) -> str | None:
         return None
 
 
+def _dedupe(entries: list, key_fields: tuple[str, ...], cap: int = 100) -> list:
+    """Collapse repeated entries (e.g. a dev-mode warning logged 200×) into one
+    record with a ``count``. Keeps first-seen order; merges counts; tracks last_ts."""
+    out: list = []
+    index: dict = {}
+    for e in entries or []:
+        key = tuple(e.get(f) for f in key_fields)
+        if key in index:
+            o = out[index[key]]
+            o["count"] = o.get("count", 1) + e.get("count", 1)
+            if e.get("ts"):
+                o["last_ts"] = e["ts"]
+        else:
+            index[key] = len(out)
+            rec = dict(e)
+            rec["count"] = e.get("count", 1)
+            out.append(rec)
+    return out[:cap]
+
+
 def _decode_png(b64: str | None) -> bytes | None:
     if not b64:
         return None
@@ -125,8 +145,8 @@ def save_report(body: bytes) -> dict:
             "captured_at": shot.get("captured_at"),
             "viewport": shot.get("viewport"),
             "annotations": shot.get("annotations") or [],
-            "console": shot.get("console") or [],
-            "network_failures": shot.get("network_failures") or [],
+            "console": _dedupe(shot.get("console"), ("level", "message")),
+            "network_failures": _dedupe(shot.get("network_failures"), ("method", "url", "status")),
         }
         orig = _decode_png(shot.get("original_png_b64"))
         if orig is not None:
@@ -213,7 +233,9 @@ def _render_markdown(report: dict) -> str:
             lines.append("")
             lines.append("```")
             for c in console[:50]:
-                lines.append(f"[{c.get('level')}] {c.get('message')}")
+                cnt = c.get("count", 1)
+                mult = f" ×{cnt}" if cnt > 1 else ""
+                lines.append(f"[{c.get('level')}{mult}] {c.get('message')}")
             lines.append("```")
             lines.append("")
         netf = s.get("network_failures") or []
@@ -221,6 +243,8 @@ def _render_markdown(report: dict) -> str:
             lines.append("**Failed network requests:**")
             lines.append("")
             for n in netf[:50]:
-                lines.append(f"- `{n.get('status')}` {n.get('method')} {n.get('url')}")
+                cnt = n.get("count", 1)
+                mult = f" ×{cnt}" if cnt > 1 else ""
+                lines.append(f"- `{n.get('status')}`{mult} {n.get('method')} {n.get('url')}")
             lines.append("")
     return "\n".join(lines) + "\n"

@@ -16,6 +16,15 @@
     var m = e.data;
     if (!m || m.__snapdeck !== true) return;
     var buf = m.kind === "network" ? window.__snapdeckBuffers.network : window.__snapdeckBuffers.console;
+    // Collapse a burst of identical messages (e.g. a framework dev-warning logged
+    // hundreds of times) into one entry with a count, so the buffer holds signal.
+    var last = buf[buf.length - 1];
+    if (last && last.message === m.data.message && last.level === m.data.level) {
+      last.count = (last.count || 1) + 1;
+      last.last_ts = m.data.ts;
+      return;
+    }
+    m.data.count = 1;
     buf.push(m.data);
     if (buf.length > MAX) buf.shift();
   });

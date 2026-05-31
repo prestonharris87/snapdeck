@@ -167,10 +167,15 @@ def warn_orphan_or_kill(port: int, label: str, kill_orphan: bool) -> bool:
     return False
 
 
-def discover_ports(kill_orphan: bool = False) -> dict[str, object]:
+def discover_ports(kill_orphan: bool = False, base: int | None = None) -> dict[str, object]:
     """Probe the controller port, derive the slot offset, and resolve every
-    declared service port at default + slot*step, bumping past orphans."""
-    controller_p = probe_port(CONFIG.controller_port)
+    declared service port at default + slot*step, bumping past orphans.
+
+    ``base`` overrides the probe-start (the configured controller port). Useful
+    to pin a worktree to a specific slot — e.g. preserve its historical ports
+    across a controller migration. The slot offset is always computed relative to
+    the *configured* controller port, so service port families stay aligned."""
+    controller_p = probe_port(base if base else CONFIG.controller_port)
     slot = (controller_p - CONFIG.controller_port) // CONFIG.port_step
     resolved: dict[str, object] = {"controller": controller_p}
     for svc in CONFIG.services.values():

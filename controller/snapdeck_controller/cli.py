@@ -83,7 +83,8 @@ def cmd_up(args) -> int:
         return 1
     if not args.daemon:
         from . import server
-        return server.run(no_autostart=args.no_autostart, kill_orphan=args.kill_orphan)
+        return server.run(no_autostart=args.no_autostart, kill_orphan=args.kill_orphan,
+                          controller_port=args.controller_port)
 
     # Daemon mode: re-exec ourselves foregrounded, detached.
     log_path = Path(args.log_path) if args.log_path else (core.STATE_DIR / "controller.log")
@@ -94,6 +95,8 @@ def cmd_up(args) -> int:
         cmd.append("--kill-orphan")
     if args.no_autostart:
         cmd.append("--no-autostart")
+    if args.controller_port:
+        cmd += ["--controller-port", str(args.controller_port)]
     with open(log_path, "ab") as out, open(os.devnull, "rb") as devnull:
         subprocess.Popen(cmd, stdin=devnull, stdout=out, stderr=out, start_new_session=True)
     waited = 0
@@ -330,6 +333,8 @@ def _build_parser() -> argparse.ArgumentParser:
     up.add_argument("--log-path")
     up.add_argument("--kill-orphan", action="store_true")
     up.add_argument("--no-autostart", action="store_true")
+    up.add_argument("--controller-port", type=int,
+                    help="pin the controller to this port (preserves a worktree's slot/ports)")
     up.set_defaults(fn=cmd_up)
 
     sub.add_parser("down", help="graceful shutdown").set_defaults(fn=cmd_down)

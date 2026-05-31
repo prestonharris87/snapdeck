@@ -219,7 +219,7 @@ def handle_key(line: str) -> None:
 
 # --- Run (foreground supervisor) ---------------------------------------------
 
-def run(no_autostart: bool = False, kill_orphan: bool = False) -> int:
+def run(no_autostart: bool = False, kill_orphan: bool = False, controller_port: int | None = None) -> int:
     # Pre-flight: refuse if a controller is already up for this worktree.
     if core.PORTS_FILE.exists():
         try:
@@ -239,7 +239,7 @@ def run(no_autostart: bool = False, kill_orphan: bool = False) -> int:
             pass
 
     core.RESOLVED.clear()
-    core.RESOLVED.update(core.discover_ports(kill_orphan=kill_orphan))
+    core.RESOLVED.update(core.discover_ports(kill_orphan=kill_orphan, base=controller_port))
     core.CONTROLLER_STARTED_AT = core.now_iso()
     core.CONTROLLER_BOOT_MONOTONIC = time.monotonic()
     core.write_ports_json()

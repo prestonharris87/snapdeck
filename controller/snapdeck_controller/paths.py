@@ -47,6 +47,11 @@ def resolve_worktree(explicit: str | None = None) -> Path:
         if config_path(p) is None:
             raise SnapdeckError(f"{p} has no {CONFIG_FILENAME} (root or .claude/)")
         return p
+    # Claude Code sets CLAUDE_PROJECT_DIR for MCP servers it launches (the spawn
+    # cwd is undefined), so prefer it — but softly: fall through if it has no config.
+    cpd = os.environ.get("CLAUDE_PROJECT_DIR")
+    if cpd and config_path(Path(cpd).absolute()) is not None:
+        return Path(cpd).absolute()
     cur = Path.cwd().absolute()  # NOT .resolve() — preserve symlinked worktree identity
     for d in [cur, *cur.parents]:
         if config_path(d) is not None:

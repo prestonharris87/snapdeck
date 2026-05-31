@@ -21,6 +21,15 @@ _TOKEN_RE = re.compile(r"\{(port\.[A-Za-z0-9_]+|svc\.[A-Za-z0-9_]+\.[A-Za-z0-9_]
 
 VALID_READY_KINDS = {"http_log", "http", "log_match", "port_open", "delay"}
 
+# Process-name substrings that `--kill-orphan` treats as a killable dev-server
+# (so we never SIGTERM sshd etc.). Projects extend this via [ports].orphan_signatures
+# — needed for compiled apps whose process name isn't the runtime (e.g. a .NET app
+# shows as "Por.Api.Expert", not "dotnet").
+DEFAULT_ORPHAN_SIGNATURES = [
+    "node", "dotnet", "ng-serve", "nx", "kestrel", "vite", "webpack", "next",
+    "java", "python", "uvicorn", "gunicorn", "ruby", "rails", "php",
+]
+
 
 @dataclass
 class ReadyConfig:
@@ -86,6 +95,7 @@ class Config:
     controller_port: int
     port_step: int
     port_max_tries: int
+    orphan_signatures: list[str]
     services: dict[str, ServiceConfig]
     user_test_reports_dir: str
     state_files: list[StateFile]
@@ -122,6 +132,9 @@ def load(worktree: Path) -> Config:
     controller_port = int(ports.get("controller", 7777))
     step = int(ports.get("step", 10))
     max_tries = int(ports.get("max_tries", 30))
+    orphan_signatures = DEFAULT_ORPHAN_SIGNATURES + [
+        str(s).lower() for s in (ports.get("orphan_signatures") or [])
+    ]
 
     services_raw = raw.get("services") or {}
     if not services_raw:
@@ -154,6 +167,7 @@ def load(worktree: Path) -> Config:
         controller_port=controller_port,
         port_step=step,
         port_max_tries=max_tries,
+        orphan_signatures=orphan_signatures,
         services=services,
         user_test_reports_dir=reports_dir,
         state_files=state_files,

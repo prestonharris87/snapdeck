@@ -13,7 +13,6 @@ import os
 import queue
 import re
 import signal
-import socket
 import ssl
 import subprocess
 import sys
@@ -27,6 +26,10 @@ from pathlib import Path
 from . import __version__
 from .config import Config, ServiceConfig, render
 from . import paths as _paths
+from .procutil import (
+    descendants_of, kill_tree, listener_on_port, listening_ports_of_pid,
+    pgid_of, pid_alive, port_in_use,
+)
 
 # --- Globals (populated by init) ----------------------------------------------
 
@@ -106,24 +109,7 @@ def now_hhmmss() -> str:
     return datetime.now().strftime("%H:%M:%S")
 
 
-# --- Port utilities (POSIX; preserved verbatim) -------------------------------
-
-def port_in_use(port: int) -> bool:
-    try:
-        r = subprocess.run(
-            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
-            capture_output=True, timeout=3,
-        )
-        return r.returncode == 0 and bool(r.stdout.strip())
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            s.bind(("127.0.0.1", port))
-            s.close()
-            return False
-        except OSError:
-            return True
-
+# --- Port utilities (port_in_use/process utils now live in procutil) ----------
 
 def probe_port(start: int) -> int:
     for i in range(CONFIG.port_max_tries):
@@ -138,10 +124,7 @@ def warn_orphan_or_kill(port: int, label: str, kill_orphan: bool) -> bool:
     if not info:
         return True
     pid = info["pid"]; cmd = info["cmd"]
-    foreign_signature = any(
-        s in (cmd or "").lower()
-        for s in ("node", "dotnet", "ng-serve", "nx", "kestrel", "vite", "webpack", "next", "java", "python")
-    )
+    foreign_signature = any(s in (cmd or "").lower() for s in CONFIG.orphan_signatures)
     if kill_orphan and foreign_signature:
         emit_event(format_event("controller", "->", f"orphan-kill {label}", f":{port} pid={pid} cmd={cmd}"))
         try:
@@ -190,115 +173,6 @@ def discover_ports(kill_orphan: bool = False, base: int | None = None) -> dict[s
                 pm[pname] = probe_port(preferred)
         resolved[svc.name] = pm
     return resolved
-
-
-# --- Process utilities (POSIX; preserved verbatim) ----------------------------
-
-def pid_alive(pid: int | None) -> bool:
-    if not pid:
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except (ProcessLookupError, PermissionError):
-        return False
-
-
-def pgid_of(pid: int) -> int | None:
-    try:
-        return os.getpgid(pid)
-    except ProcessLookupError:
-        return None
-
-
-def listening_ports_of_pid(pid: int) -> list[int]:
-    try:
-        r = subprocess.run(
-            ["lsof", "-a", "-nP", "-p", str(pid), "-iTCP", "-sTCP:LISTEN", "-Fn"],
-            capture_output=True, timeout=5,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return []
-    ports: list[int] = []
-    for line in r.stdout.decode("utf-8", errors="replace").splitlines():
-        if not line.startswith("n"):
-            continue
-        trailing = line.rsplit(":", 1)[-1].split("->", 1)[0].strip()
-        try:
-            ports.append(int(trailing))
-        except ValueError:
-            continue
-    seen: set[int] = set(); uniq: list[int] = []
-    for p in ports:
-        if p not in seen:
-            seen.add(p); uniq.append(p)
-    return uniq
-
-
-def descendants_of(pid: int, depth: int = 5) -> list[int]:
-    seen = {pid}; frontier = [pid]
-    for _ in range(depth):
-        nxt: list[int] = []
-        for p in frontier:
-            try:
-                r = subprocess.run(["pgrep", "-P", str(p)], capture_output=True, timeout=3)
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                continue
-            for line in r.stdout.decode("utf-8", errors="replace").splitlines():
-                try:
-                    child = int(line.strip())
-                except ValueError:
-                    continue
-                if child not in seen:
-                    seen.add(child); nxt.append(child)
-        if not nxt:
-            break
-        frontier = nxt
-    return [p for p in seen if p != pid] + [pid]
-
-
-def kill_tree(pid: int, pgid: int | None, sig: signal.Signals) -> bool:
-    if pgid:
-        try:
-            os.killpg(pgid, sig)
-            return True
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            pass
-    success = False
-    for p in descendants_of(pid):
-        try:
-            os.kill(p, sig)
-            success = True
-        except (ProcessLookupError, PermissionError):
-            continue
-    return success
-
-
-def listener_on_port(port: int) -> dict | None:
-    try:
-        r = subprocess.run(
-            ["lsof", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-Fpc"],
-            capture_output=True, timeout=3,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return None
-    if r.returncode != 0:
-        return None
-    pid = None; cmd = None
-    for line in r.stdout.decode("utf-8", errors="replace").splitlines():
-        if line.startswith("p"):
-            try:
-                pid = int(line[1:])
-            except ValueError:
-                pid = None
-        elif line.startswith("c") and pid is not None:
-            cmd = line[1:]
-            break
-    if pid is None:
-        return None
-    return {"pid": pid, "cmd": cmd or ""}
 
 
 # --- Event log ----------------------------------------------------------------

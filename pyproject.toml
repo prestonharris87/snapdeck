@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "snapdeck"
+version = "0.1.0"
+description = "Per-worktree dev-server controller + browser capture tool. Run your project's services, then annotate and file user-test-reports straight from the browser."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Point of Rental Software" }]
+keywords = ["dev-server", "supervisor", "worktree", "chrome-extension", "testing", "mcp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Testing",
+]
+dependencies = [
+    "platformdirs>=4.0",
+]
+
+[project.optional-dependencies]
+# Windows process/port management (fast-follow). On macOS/Linux the POSIX
+# lsof/pgrep/killpg path is used and psutil is not required.
+windows = ["psutil>=5.9"]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+deck = "snapdeck_controller.cli:main"
+deck-mcp = "snapdeck_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/Point-of-Rental/snapdeck"
+Repository = "https://github.com/Point-of-Rental/snapdeck"
+
+[tool.hatch.build.targets.wheel]
+packages = ["controller/snapdeck_controller", "mcp/snapdeck_mcp"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

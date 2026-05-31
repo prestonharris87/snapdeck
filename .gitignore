@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Node / extension
+node_modules/
+extension/dist/
+extension/*.zip
+
+# Local state / scratch
+.snapdeck/
+*.log
+.DS_Store
+
+# A consuming project's own config never belongs in the tool repo
+/snapdeck.toml

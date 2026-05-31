@@ -1,0 +1,91 @@
+# snapdeck.toml — per-project Snapdeck configuration.
+#
+# Place this file at the root of your project repo (it is committed and shared
+# across all worktrees of the project). It describes how Snapdeck starts your
+# project's services. The Snapdeck engine ships empty of project knowledge —
+# everything project-specific lives here.
+#
+# Port templating tokens (resolved after probe-and-bump):
+#   {port.<name>}            this service's own resolved port named <name>
+#   {svc.<service>.<name>}   another service's resolved port named <name>
+
+[project]
+# Used as the cross-worktree registry namespace:
+#   <user_state_dir>/snapdeck/<name>/instances/
+name = "myapp"
+
+[ports]
+controller = 7777   # the controller's own HTTP API port (probe base)
+step = 10           # multi-worktree offset: each sibling worktree bumps by this
+max_tries = 30      # probe controller, controller+step, ... up to this many slots
+
+# --- Services -----------------------------------------------------------------
+# Each [services.<name>] is one supervised long-running process. Declare as many
+# as your stack needs (frontend, backend, database, worker, ...). A pure
+# `docker compose up` stack is just one service whose `start` is that command.
+
+[services.backend]
+cwd = "server"
+start = "npm run dev -- --port {port.http}"
+startup_timeout_s = 90
+[services.backend.ports]
+http = 4000
+[services.backend.ready]
+kind = "http_log"                       # http probe AND a log marker
+http_url = "http://localhost:{port.http}/health"
+log_pattern = "listening on"
+log_min_count = 1
+primary_port = "http"                   # the port used for slot alignment + drift checks
+
+[services.frontend]
+cwd = "web"
+start = "npm run dev -- --port {port.http}"
+startup_timeout_s = 60
+depends_on = ["backend"]                # backend reaches ready before frontend starts
+browsable = true                        # the app under test — extension resolves worktree by THIS port
+[services.frontend.ports]
+http = 3000
+[services.frontend.ready]
+kind = "http_log"
+http_url = "http://localhost:{port.http}"
+log_pattern = "compiled|ready in|Local:"
+log_min_count = 1
+primary_port = "http"
+
+# Optional: rewrite a file every time this service starts, pinning it to the
+# resolved ports of this worktree (e.g. a frontend config that hardcodes the
+# API URL). Idempotent — only writes when the value would change.
+# [[services.frontend.patch]]
+# file = "web/src/config.json"
+# json_set = { "apiUrl" = "http://localhost:{svc.backend.http}" }
+
+# --- User-test-reports (Chrome extension output) ------------------------------
+[user_test_reports]
+output_dir = "thoughts/shared/user-test-reports"
+
+# --- Legacy state files (optional) --------------------------------------------
+# Generic key=value files written after services reach ready — handy for other
+# tools that want to discover the live URLs.
+# [[state_files]]
+# path = ".snapdeck/urls.txt"
+# lines = ["api=http://localhost:{svc.backend.http}", "web=http://localhost:{svc.frontend.http}"]
+
+# --- Exec catalog (optional) --------------------------------------------------
+# Whitelisted one-shot maintenance commands runnable via `deck exec <name>`.
+# The engine supervises them as async jobs; only commands listed here can run.
+[[exec]]
+name = "install"
+description = "Install dependencies after a package.json change."
+tier = "install"
+cwd = "web"
+requires_stopped = ["frontend"]   # service names that must be down first
+est_duration_s = 90
+cmd = "npm install"
+
+[[exec]]
+name = "build"
+description = "Production build — verifies the app compiles."
+tier = "build"
+cwd = "web"
+est_duration_s = 120
+cmd = "npm run build"

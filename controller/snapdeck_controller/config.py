@@ -19,7 +19,7 @@ from .paths import CONFIG_FILENAME
 
 _TOKEN_RE = re.compile(r"\{(port\.[A-Za-z0-9_]+|svc\.[A-Za-z0-9_]+\.[A-Za-z0-9_]+)\}")
 
-VALID_READY_KINDS = {"http_log", "http", "log_match", "port_open", "delay"}
+VALID_READY_KINDS = {"http_log", "http", "log_match", "port_open", "delay", "exit_zero"}
 
 # Process-name substrings that `--kill-orphan` treats as a killable dev-server
 # (so we never SIGTERM sshd etc.). Projects extend this via [ports].orphan_signatures
@@ -62,12 +62,20 @@ class ServiceConfig:
     env_from_launch_profile: dict | None = None  # {"file": ..., "profile": ...}
     pre_stop: str | None = None
     patches: list[PatchConfig] = field(default_factory=list)
+    # A oneshot runs its `start` command to completion (ready == exit 0) instead of staying
+    # alive — used for provisioning steps (e.g. DB restore/migrate) that other services
+    # depends_on. Oneshots may declare no ports.
+    oneshot: bool = False
+    # Optional command whose JSON stdout ({"VAR": "val", ...}) is merged into this service's
+    # env at spawn (run from the worktree root, inheriting os.environ). Generic hook for
+    # injecting computed env (e.g. a per-worktree DB identity) without baking it into core.
+    env_from_command: str | None = None
 
     @property
-    def primary_port_name(self) -> str:
+    def primary_port_name(self) -> str | None:
         if self.ready.primary_port and self.ready.primary_port in self.ports:
             return self.ready.primary_port
-        return next(iter(self.ports))  # first declared port
+        return next(iter(self.ports), None)  # first declared port (None if portless oneshot)
 
 
 @dataclass
@@ -179,13 +187,14 @@ def load(worktree: Path) -> Config:
 def _parse_service(src: Path, name: str, s: dict) -> ServiceConfig:
     if "start" not in s:
         raise SnapdeckError(f"{src}: service '{name}' missing `start`")
+    oneshot = bool(s.get("oneshot", False))
     raw_ports = s.get("ports") or {}
-    if not raw_ports:
+    if not raw_ports and not oneshot:
         raise SnapdeckError(f"{src}: service '{name}' must declare at least one [services.{name}.ports]")
     ports = {k: int(v) for k, v in raw_ports.items()}
 
     r = s.get("ready") or {}
-    kind = r.get("kind", "http_log")
+    kind = r.get("kind", "exit_zero" if oneshot else "http_log")
     if kind not in VALID_READY_KINDS:
         raise SnapdeckError(f"{src}: service '{name}' ready.kind '{kind}' invalid; one of {sorted(VALID_READY_KINDS)}")
     ready = ReadyConfig(
@@ -219,6 +228,8 @@ def _parse_service(src: Path, name: str, s: dict) -> ServiceConfig:
         env_from_launch_profile=s.get("env_from_launch_profile"),
         pre_stop=s.get("pre_stop"),
         patches=patches,
+        oneshot=oneshot,
+        env_from_command=s.get("env_from_command"),
     )
 
 

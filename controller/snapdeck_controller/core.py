@@ -254,6 +254,20 @@ def service_env(svc: str) -> dict[str, str]:
                 env[k] = str(v)
         except (OSError, json.JSONDecodeError, KeyError):
             pass
+    # Generic computed-env hook: run a command (from the worktree root, inheriting this env)
+    # and merge its JSON-object stdout. Used to inject a per-worktree DB identity without
+    # baking project specifics into core. Applied last so it overrides ambient/shared values.
+    if cfg.env_from_command:
+        try:
+            out = subprocess.run(["bash", "-c", cfg.env_from_command], cwd=str(WORKTREE),
+                                 env=env, capture_output=True, text=True, timeout=30)
+            if out.returncode == 0 and out.stdout.strip():
+                extra = json.loads(out.stdout)
+                if isinstance(extra, dict):
+                    for k, v in extra.items():
+                        env[str(k)] = str(v)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
     return env
 
 
@@ -431,6 +445,9 @@ def spawn_service(svc: str, actor: str) -> dict:
                   "ready": False, "started_at": now_iso(), "ready_at": None, "last_event": "starting"})
     write_state_json()
 
+    if cfg.oneshot:
+        return _run_oneshot(svc, proc, log_fp, actor)
+
     t0 = time.monotonic()
     ready, marker = wait_ready(svc, spawn_started)
     took = round(time.monotonic() - t0, 1)
@@ -460,6 +477,53 @@ def spawn_service(svc: str, actor: str) -> dict:
         state.update({"pid": None, "pgid": None, "state": "down"})
         write_state_json()
     return {"ok": False, "ready": False, "took_s": took, "error": marker}
+
+
+def _run_oneshot(svc: str, proc: subprocess.Popen, log_fp, actor: str) -> dict:
+    """Run a oneshot service's command to completion: ready == exit 0. Blocks the caller
+    until the process exits or startup_timeout_s elapses — depends_on waves rely on this to
+    gate dependents on the provisioning result. The PID is cleared on exit so crash_watcher
+    never treats the (intended) exit as a crash."""
+    cfg = CONFIG.services[svc]
+    state = SERVICE_STATE[svc]
+    t0 = time.monotonic()
+    deadline = t0 + cfg.startup_timeout_s
+    rc = None
+    marker = ""
+    while True:
+        try:
+            rc = proc.wait(timeout=1.0)
+            break
+        except subprocess.TimeoutExpired:
+            if SHUTDOWN_FLAG.is_set():
+                marker = "controller shutdown during oneshot"
+                break
+            if time.monotonic() > deadline:
+                marker = f"timeout after {cfg.startup_timeout_s}s"
+                break
+    if rc is None:  # timed out or shutdown — terminate the process tree
+        kill_tree(proc.pid, pgid_of(proc.pid), signal.SIGTERM)
+        for _ in range(30):
+            if not pid_alive(proc.pid):
+                break
+            time.sleep(0.1)
+        if pid_alive(proc.pid):
+            kill_tree(proc.pid, pgid_of(proc.pid), signal.SIGKILL)
+    log_fp.close()
+    took = round(time.monotonic() - t0, 1)
+    if rc == 0:
+        state.update({"state": "ready", "pid": None, "pgid": None, "ready": True,
+                      "ready_at": now_iso(), "last_event": "done"})
+        emit_event(format_event(svc, "->", f"done ({int(took)}s)", "oneshot exit 0"))
+        write_state_json()
+        write_state_files()
+        return {"ok": True, "ready": True, "took_s": took, "marker_seen": "exit 0"}
+    err = marker or f"exit {rc}"
+    state.update({"state": "failed", "pid": None, "pgid": None, "ready": False,
+                  "last_event": "oneshot-failed"})
+    emit_event(format_event(svc, "->", "oneshot-failed", err))
+    write_state_json()
+    return {"ok": False, "ready": False, "took_s": took, "error": err}
 
 
 def stop_service(svc: str, actor: str) -> dict:
@@ -568,6 +632,8 @@ def crash_watcher() -> None:
     while not SHUTDOWN_FLAG.is_set():
         time.sleep(1.0)
         for svc, state in SERVICE_STATE.items():
+            if CONFIG.services[svc].oneshot:
+                continue  # a oneshot that exited cleanly is done, not crashed
             pid = state.get("pid")
             if state.get("state") == "ready" and pid and not pid_alive(pid):
                 state.update({"state": "down", "pid": None, "pgid": None, "ready": False, "last_event": "crashed"})

@@ -159,7 +159,11 @@ def cmd_status(args) -> int:
           f"project={c.get('project')}  worktree={c.get('worktree')}")
     for svc in core.CONFIG.service_names:
         s = d.get(svc, {})
-        badge = "READY" if s.get("ready") else (s.get("state") or "?").upper()
+        cfg = core.CONFIG.services.get(svc)
+        if s.get("ready"):
+            badge = "DONE" if (cfg and cfg.oneshot) else "READY"
+        else:
+            badge = (s.get("state") or "?").upper()
         port_field = str(s.get("port") or "-")
         if s.get("port_drift"):
             port_field = f"{s.get('port')}/actual:{s.get('actual_port')} [DRIFT]"

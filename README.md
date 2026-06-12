@@ -65,6 +65,46 @@ http_url = "http://localhost:{port.http}"
 log_pattern = "ready in|Local:"
 ```
 
+### Provisioning steps (oneshots)
+
+A service marked `oneshot = true` runs its `start` command **to completion**
+instead of staying alive — ready means *exit 0* (the `exit_zero` ready kind,
+the default for oneshots). Other services can `depends_on` it, so it's the
+natural way to gate your stack on provisioning: restore a database, run
+migrations, seed fixtures, generate code. Oneshots don't need to declare ports.
+
+```toml
+[services.db_provision]
+oneshot = true
+start = "./scripts/restore-db.sh"
+startup_timeout_s = 300            # hard cap on the provisioning run
+
+[services.backend]
+depends_on = ["db_provision"]      # waits for exit 0 before starting
+# ...
+```
+
+`deck status` shows a finished oneshot as `DONE`; a non-zero exit fails the
+startup wave with the exit code in the event log.
+
+### Computed env (`env_from_command`)
+
+Any service can declare `env_from_command` — a command run from the worktree
+root whose **JSON-object stdout** is merged into the service's environment at
+spawn, overriding ambient/shared values. Use it for values that must be
+computed per worktree rather than written into the config, e.g. giving each
+worktree its own database:
+
+```toml
+[services.backend]
+env_from_command = "./scripts/db-identity.sh"   # prints {"DATABASE_URL": "..."}
+# ...
+```
+
+If the command fails, times out (30s), or prints invalid JSON, the spawn
+**fails loudly** (`env-failed` in the event log) — the service never launches
+with missing env.
+
 ## Use it
 
 ```sh

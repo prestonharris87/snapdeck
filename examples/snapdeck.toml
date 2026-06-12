@@ -24,10 +24,23 @@ max_tries = 30      # probe controller, controller+step, ... up to this many slo
 # as your stack needs (frontend, backend, database, worker, ...). A pure
 # `docker compose up` stack is just one service whose `start` is that command.
 
+# Optional: a oneshot provisioning step. Runs `start` to completion (ready ==
+# exit 0, the `exit_zero` ready kind) instead of staying alive; needs no ports.
+# Services that `depends_on` it wait for the exit-0 before starting.
+# [services.db_provision]
+# oneshot = true
+# start = "./scripts/restore-db.sh"
+# startup_timeout_s = 300
+
 [services.backend]
 cwd = "server"
 start = "npm run dev -- --port {port.http}"
 startup_timeout_s = 90
+# depends_on = ["db_provision"]
+# Optional: merge the JSON-object stdout of a command into this service's env
+# at spawn (run from the worktree root) — e.g. a per-worktree DB identity.
+# Failures (non-zero exit, timeout, bad JSON) fail the spawn loudly.
+# env_from_command = "./scripts/db-identity.sh"
 [services.backend.ports]
 http = 4000
 [services.backend.ready]

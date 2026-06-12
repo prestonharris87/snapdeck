@@ -23,7 +23,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__
+from . import __version__, SnapdeckError
 from .config import Config, render
 from . import paths as _paths
 from .procutil import (
@@ -257,17 +257,29 @@ def service_env(svc: str) -> dict[str, str]:
     # Generic computed-env hook: run a command (from the worktree root, inheriting this env)
     # and merge its JSON-object stdout. Used to inject a per-worktree DB identity without
     # baking project specifics into core. Applied last so it overrides ambient/shared values.
+    # Any failure raises — launching the service WITHOUT its declared env would only defer
+    # the breakage to somewhere harder to debug.
     if cfg.env_from_command:
         try:
             out = subprocess.run(["bash", "-c", cfg.env_from_command], cwd=str(WORKTREE),
                                  env=env, capture_output=True, text=True, timeout=30)
-            if out.returncode == 0 and out.stdout.strip():
+        except subprocess.TimeoutExpired:
+            raise SnapdeckError(f"{svc}: env_from_command timed out after 30s")
+        except (OSError, subprocess.SubprocessError) as e:
+            raise SnapdeckError(f"{svc}: env_from_command failed to run: {e}")
+        if out.returncode != 0:
+            detail = (out.stderr or out.stdout).strip().splitlines()
+            raise SnapdeckError(f"{svc}: env_from_command exited {out.returncode}"
+                                + (f": {detail[-1]}" if detail else ""))
+        if out.stdout.strip():
+            try:
                 extra = json.loads(out.stdout)
-                if isinstance(extra, dict):
-                    for k, v in extra.items():
-                        env[str(k)] = str(v)
-        except (OSError, ValueError, subprocess.SubprocessError):
-            pass
+            except ValueError:
+                raise SnapdeckError(f"{svc}: env_from_command stdout is not valid JSON")
+            if not isinstance(extra, dict):
+                raise SnapdeckError(f"{svc}: env_from_command must print a JSON object, got {type(extra).__name__}")
+            for k, v in extra.items():
+                env[str(k)] = str(v)
     return env
 
 
@@ -427,7 +439,13 @@ def spawn_service(svc: str, actor: str) -> dict:
     truncate_log(log_path)
     apply_patches(svc)  # pin templated files BEFORE the watcher catches a half-write
     cmd = ["bash", "-c", render(cfg.start, svc, RESOLVED)]
-    env = service_env(svc)
+    try:
+        env = service_env(svc)
+    except SnapdeckError as e:
+        emit_event(format_event(svc, "->", "env-failed", str(e)))
+        SERVICE_STATE[svc].update({"state": "failed", "ready": False, "last_event": "env-failed"})
+        write_state_json()
+        return {"ok": False, "ready": False, "error": str(e)}
     log_fp = log_path.open("ab", buffering=0)
     spawn_started = log_path.stat().st_size
     emit_event(format_event(svc, "->", f"starting ({actor})", f"cwd={cfg.cwd}"))

@@ -1,0 +1,85 @@
+---
+type: story
+id: STORY-be-001
+name: "No backend work — draggable toolbar + visibility toggle are content-script-side"
+domain: backend
+parent_feature: w1-draggable-toolbar-toggle
+parent_epic: snapdeck-ux-improvements
+assignee: backend-engineer
+author_architect: backend-architect
+effort: 1
+status: pending
+sentinel: true
+depends_on: []
+diff_estimate: mechanical
+files_modified: []
+files_not_modified: [extension/background.js, controller/snapdeck_controller/reports.py, controller/snapdeck_controller/server.py, extension/manifest.json]
+reuse_patterns: []
+created_at: 2026-06-19T15:22:00Z
+last_run_id: run-20260619-042600-10898
+visual_references: []
+defects: []
+---
+
+# Story: No backend changes required for this feature
+
+No backend changes required for this feature.
+
+## Why this is a no-work domain (sentinel)
+
+This is an editor-chrome ergonomics feature whose two affordances are both
+**content-script-side and view-local**. Neither touches the Chrome MV3 service
+worker (`extension/background.js`) nor the Python controller. Verified by opening
+the actual files (Verified: 2026-06-19):
+
+- **Toolbar position persistence uses `chrome.storage.local`, written/read directly
+  from the content script.** The `storage` permission is already granted
+  (`extension/manifest.json:6` — `["activeTab","tabs","scripting","storage","unlimitedStorage"]`),
+  and `editor.js` is registered as a content script (`extension/manifest.json:41`,
+  `run_at: document_idle`). Content scripts can call `chrome.storage.local.get/set`
+  directly with that permission — there is **no service-worker mediation** of
+  `chrome.storage.local`, and no new `background.js` message type is required.
+- **`background.js` has zero `chrome.storage.local` usage and no handler for
+  toolbar position or layer visibility.** Its message switch handles only
+  `GET_STATE`, `SET_NOTE`, `ADD_SCREENSHOT`, `SAVE_REPORT`, `CLEAR_REPORT`
+  (`background.js:165-190`). Its report store is **service-worker-context
+  IndexedDB** accessed via the `idb()` helpers (`background.js:10-48`) — an
+  entirely separate surface from `chrome.storage.local`. (Per backend lessons:
+  the in-progress report store is the SW's IndexedDB, not `chrome.storage`.)
+- **The `ANNOTATE` editor→SW resolve contract stays frozen.** The only editor↔SW
+  IPC is the `ANNOTATE` message (`editor.js:12-14` ← dispatched at
+  `background.js:209`). Its response object (`resp`, consumed at
+  `background.js:213-228`, including `model: resp.model ?? null`) records
+  **per-screenshot** annotation data. Toolbar position is **global editor-chrome
+  state** (not per-screenshot) and the visibility toggle is **non-persisted view
+  state** — so neither rides the `resp` payload, and the screenshot-record push
+  literal (`background.js:215-226`) and the `/report/save` field whitelist
+  (`background.js:248-252`) are untouched.
+- **The Python controller is untouched.** No new field rides the `/report/save`
+  payload and there is no new `/resolve` behavior — toolbar position lives only in
+  `chrome.storage.local` on the browser side, per scope.md § Out of scope.
+- **Visibility toggle is a pure Konva view-state flip** (`annLayer.visible()` +
+  hide selection chrome on `selectLayer`) with no persistence whatsoever — nothing
+  for the backend regardless.
+
+This determination matches `scope.md` ("Toolbar position lives in
+`chrome.storage.local`, NOT the report store / `model`") and `feature.md` § Out of
+scope, and is the same data-flow direction noted in backend lessons: the content
+script owns this state; the service worker does not consume it.
+
+## Peer coordination
+
+Sent a confirmation message to **frontend-architect** (1 outgoing peer message,
+topic: persistence is genuinely content-script-side `chrome.storage.local` with no
+`background.js` mediation; `ANNOTATE` resolve contract stays frozen; visibility
+toggle is non-persisted view state). This sentinel is a team agreement, not an
+isolated assumption. Conversation mirrored under
+`thoughts/shared/epics/snapdeck-ux-improvements/conversations/`.
+
+## Dependencies
+
+none
+
+## History
+
+- 2026-06-19 — created by backend-architect (sentinel, effort=1, depends on none)

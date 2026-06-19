@@ -330,3 +330,54 @@ first serialization. The reconcile half (Part 2) depends only on fe-001/fe-002.
   `{port,count,ts}` — exact match to lock). Dropped the SKELETON/HELD markers; the
   consumer half is now final (consume the existing emit). Ready for Contrarian 5.5 + PO
   arbitration.
+
+## Contrarian Findings
+
+> Phase 5.5 stress-test. Verified against live `extension/background.js` (commit `6512a12`):
+> `emitReportCountChanged` at `:53-56` (un-awaited fire-and-forget, null-port-guarded),
+> emit sites at `:239` (addScreenshot), `:271` (saveReport success), `:195` (CLEAR_REPORT);
+> the released global `✓`/`!` flash at `:132-163`. Key-filter + harness-tolerance confirmed
+> against the frozen `background.reports.test.mjs` mock (no `storage`, no `action.setIcon`).
+
+### Finding 1 — "Self-heals at the next wake" overstates coverage: a dropped tick on a dormant SW with an idle user has no wake to heal it
+
+**Severity:** concern
+**Mechanism:** The design's robustness rests on "any dropped tick self-heals at the next
+wake" + the `droppedTick_wakeReconcilesFromGetState` unit/E2E case. But that case only proves
+heal-*on*-wake. Trace the realistic drop cause: `emitReportCountChanged` does an **un-awaited**
+`chrome.storage.session.set` (`background.js:55`) *after* the awaited IDB write — so a tick is
+realistically lost only when the SW tears down before the fire-and-forget `set` flushes (a
+live SW always flushes the microtask). That drop is therefore SW-teardown-coupled — and the
+top-level cold-start re-derive only re-runs when the SW **next wakes**. An MV3 SW wakes only
+on an event. So the sequence: user captures (count N→N+1) → SW tears down mid-flush, tick
+dropped → user then *stares at the toolbar* without switching tabs, reloading, or opening the
+popup → **no event wakes the SW**, the cold-start re-derive never runs, and Chrome's retained
+per-tab badge shows the stale **N** until the next interaction. Bounded and low-consequence
+(the user just captured, so they know they did; any interaction heals; the count is always
+reconciled from the `getReport`/`GET_STATE` SSOT) and squarely within scope's best-effort/
+lossy posture — but the design language and the `droppedTick` test subtly claim more coverage
+than exists.
+**Recommendation:** acknowledge — add an `## Acknowledged Risk` block stating "a dropped tick
+self-heals at the next *wake event*; an idle dormant SW shows a stale count until the next
+user interaction (tab switch / reload / popup open) — accepted under the best-effort tick
+posture." (No code change; this is a truth-in-labeling fix so PO accepts the idle blind spot
+consciously rather than believing the heal is unconditional.)
+
+### Finding 2 — On an orange tab, the released global `!` ERROR flash is masked by the tab-specific count badge → silent capture failures on tabs with unsaved screenshots
+
+**Severity:** concern
+**Mechanism:** Already noted in this story's Part 2 as a "Known limitation (accepted risk)";
+this pass confirms it is real and recommends formalizing it. `runCaptureCommand()` drives the
+`!` error flash on the **GLOBAL** (no-`tabId`) action badge (`background.js:140-156`), and
+Chrome's documented action-badge precedence makes a tab-specific value shadow the global value
+for that tab. So on an ORANGE tab (a tab-specific count badge is set), a failed keyboard-
+shortcut capture's red `!` and its global error `setTitle` are **masked** — the user sees the
+unchanged orange count and gets no error signal that the capture failed. The only implicit cue
+is "the count didn't increment." This is a visible degradation of the released `w0-keyboard-
+shortcuts` error feedback specifically on tabs that already have screenshots. The remedies
+(emit a failure tick from released code, or a separate notification surface) are out of scope /
+require a BOSS-escalated released-code defect.
+**Recommendation:** acknowledge with PO sign-off — promote the prose aside to a formal
+`## Acknowledged Risk` block, because it is a behavior-visible regression of released feedback
+(not merely an internal trade-off). If PO judges silent capture-errors-on-orange unacceptable,
+the path is a BOSS-escalated defect against the released kb code, **not** an in-feature edit.

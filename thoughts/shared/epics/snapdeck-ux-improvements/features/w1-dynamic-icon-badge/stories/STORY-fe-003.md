@@ -46,8 +46,8 @@ capture/save:
    `runCaptureCommand()` flash `✓`/`!` per-`tabId` (not global) and drop the destructive
    global pre-clear, so the flash is no longer shadowed by this feature's per-tab count badge.
    fe-003 keeps its EXISTING reconcile (the `reportCountChanged` `onChanged` branch + the wake
-   re-derive) and adds NO seam/handback. No edit to released kb code. ⚠️ See `## Cross-team
-   item` for a flagged AC5-keyboard residual in kb's shipped self-clear.
+   re-derive) and adds NO seam/handback. No edit to released kb code. AC5 holds via kb's
+   GUARDED `clearFlash` (commit `e87d247`) — see `## Cross-team item`.
 
 Both reduce to: **re-derive + repaint the active tab (fe-002's `refreshActiveTab`)
 at the moment a capture/save changes the count.** The *signal* for that moment is the
@@ -75,15 +75,15 @@ handback** (no `globalThis` fn, no `flashCleared` branch).
   sets `setBadgeText({ tabId, text: "" })` for green/gray and `{ tabId, text: String(count) }`
   for orange; every steady state writes its OWN tab-scoped badge and does NOT rely on kb's
   (now-dropped) global badge. (The `text:null` global-fall-through idea is obsolete and removed.)
-- **Residual after kb's flash self-clears:** kb's teardown clears its flash to empty on
-  `{tabId}`; dynamic-icon re-asserts the steady state on its next wake-reconcile. **⚠️ Scope
-  caveat (flagged to team-lead — see `## Cross-team item`):** kb's shipped `clearFlash`
-  (`background.js:131-139`, via `scheduleFlashClear` :166-174) is UNCONDITIONAL
-  (`setBadgeText({tabId, text:""})`), so on the keyboard **success** path it blanks the
-  `reportCountChanged`-painted count at teardown too — not just the error path — leaving the
-  badge empty until the next wake. That conflicts with AC5 + the "live increment on the
-  keyboard-shortcut path" / "steady-state-after-flash" E2Es; the clean fix is a **guarded**
-  kb self-clear (clear only if the badge still shows kb's own `✓`/`!`), a kb-side tweak.
+- **Residual after kb's flash self-clears (AC5 holds):** kb's teardown uses a GUARDED
+  `clearFlash` (commit `e87d247`) — `await chrome.action.getBadgeText({tabId})`, clear ONLY if
+  the tab still shows kb's own `✓`/`!`. So on the keyboard **success** path the
+  `reportCountChanged`-painted orange count SURVIVES teardown (kb sees the count, not its `✓`,
+  and skips the clear) → **AC5 holds, no tab switch**. The only residual is a genuine **error**
+  capture (no `reportCountChanged` tick): after its `!` self-clears, the badge is briefly empty
+  until dynamic-icon's next wake-reconcile — minor error-case-only cosmetic transient, healed
+  by the existing wake path. (kb's `onCommand_successFlashTeardown_doesNotBlankRepaintedCount`
+  test is green; see `## Cross-team item`.)
 
 ### Part 1 — Live-count trigger
 
@@ -121,9 +121,9 @@ handback** (no `globalThis` fn, no `flashCleared` branch).
   `newValue.{port,count}` is available for an OPTIONAL best-effort multi-window pass
   (repaint other tabs whose resolved port === `newValue.port`); deferred as best-effort per
   scope (those tabs otherwise repaint on their next `onActivated`). On the kb path the
-  `reportCountChanged` tick lands orange `N+1`; after kb's per-`tabId` flash self-clears the
-  steady state re-asserts on the next wake-reconcile (Part 2 + `## Cross-team item` — note the
-  flagged AC5-keyboard residual where kb's UNCONDITIONAL self-clear blanks the count).
+  `reportCountChanged` tick lands orange `N+1`, and kb's GUARDED `clearFlash` (commit
+  `e87d247`) leaves that tick-painted count intact at teardown → AC5 holds, no tab switch (the
+  only post-flash residual is the error case, healed by the wake path — see Part 2).
 - `storage.onChanged` fires in the originating SW context, so the same worker that wrote
   the tick repaints. No new permission (`storage.session` already granted).
 - **🔒 DESIGN REQUIREMENT (BOSS-elevated) — the tick is a repaint nudge, NEVER source of
@@ -230,11 +230,12 @@ lagging until the next tab event). Do not implement unless Option A is reversed.
       next wake-reconcile.
 - [ ] (shadow SOLVED) On an ORANGE tab, a kb capture's `✓`/`!` IS visible (kb's flash is
       per-`tabId`, global pre-clear dropped) — no longer masked by the count badge.
-- [ ] (⚠️ AC5-keyboard residual — FLAGGED, kb-side) after a keyboard-shortcut capture, kb's
-      UNCONDITIONAL self-clear (`clearFlash`, bg.js:131-139) blanks the active tab's badge at
-      teardown — on **success** too, not just error — so the count re-appears only on the next
-      wake-reconcile. Conflicts with AC5 + the keyboard-path live-count / steady-state-after-
-      flash E2Es; needs a GUARDED kb self-clear (kb-side). Escalated to team-lead.
+- [ ] (AC5 holds — kb guard) after a keyboard-shortcut **success**, kb's GUARDED `clearFlash`
+      (`getBadgeText({tabId})` check, commit `e87d247`) preserves the `reportCountChanged`-
+      painted orange count through teardown — the badge shows the count after `✓` resets, no
+      tab switch (kb test `onCommand_successFlashTeardown_doesNotBlankRepaintedCount` green).
+      The only residual is the error case (no tick) — briefly empty until the next
+      wake-reconcile, error-only cosmetic, healed by the existing wake path.
 - [ ] fe-003's diff does not touch `runCaptureCommand`/`addScreenshot`/`saveReport`/
       `CLEAR_REPORT`/the released `onMessage` listener (AC11 boundary).
 - [ ] No 2nd `onMessage` listener added; `node --test extension/*.test.mjs` GREEN
@@ -373,6 +374,14 @@ first serialization. The reconcile half (Part 2) depends only on fe-001/fe-002.
   blanks the keyboard-**success** count after the `✓` teardown (not error-only) → conflicts
   with the keyboard-path live-count + steady-state-after-flash E2Es; recommended a GUARDED kb
   self-clear (kb-side). Escalated to team-lead; pending reconciliation before STORIES_LOCKED.
+- 2026-06-19 — frontend-architect: **AC5 flag RESOLVED** — BOSS ruled (i); kb shipped the
+  GUARDED `clearFlash` (commit `e87d247`: `await getBadgeText({tabId})`, clears only its own
+  `✓`/`!`). Regression test `onCommand_successFlashTeardown_doesNotBlankRepaintedCount` green,
+  cohort `node --test` 100/100 → keyboard-success count survives teardown, **AC5 holds**.
+  Flipped #3 / Part-2 / "Why AC11" / validation from the honest AC5-flag → "SOLVED; AC5 holds
+  via kb's guarded `clearFlash`; residual now genuinely error-only cosmetic." No fe-003 code
+  change; the unconditional-`clearFlash` evidence (bg.js:131-139 / :166-174) stays above as
+  the audit trail. Closes the badge-flash episode.
 
 ## Contrarian Findings
 
@@ -447,29 +456,26 @@ blind spot is accepted consciously rather than believed away. **PO-accepted.**
 
 Status: pending → approved.
 
-## Cross-team item — badge-flash shadow (SOLVED kb-side, option (c)) + ⚠️ AC5-keyboard residual FLAGGED
+## Cross-team item — badge-flash shadow (SOLVED; AC5 holds via kb's guarded clearFlash)
 
-### 2026-06-19 — team-lead relay (BOSS-ruled SOLVE, option (c) — NO seam)
+### 2026-06-19 — team-lead relay (BOSS-ruled SOLVE, option (c) — NO seam; kb guard verified)
 
-**SOLVED kb-side (option (c) — no cross-feature seam).** kb makes its `!`/`✓` capture flash
-per-`tabId` + drops the destructive global pre-clear (`defect-badge-flash-shadow`, BOSS-ruled
-SOLVE, lands the same Wave-1 PR) → the flash is no longer shadowed by this feature's orange
-count badge. fe-003 keeps ONLY its existing wake-reconcile + `reportCountChanged` branch (NO
-seam, NO `flashCleared` branch, NO `globalThis` fn). No w2 forward-flag. (Supersedes the prior
-placeholder, the Part-2 "Known limitation", and the withdrawn seam-(a)/seam-(b) approaches.)
+**SOLVED — AC5 holds.** kb makes its `!`/`✓` capture flash per-`tabId` + drops the destructive
+global pre-clear (`defect-badge-flash-shadow` / DEF-001, option **(c)**, no cross-feature seam)
+→ the flash is no longer shadowed by this feature's orange count badge. fe-003 keeps ONLY its
+existing wake-reconcile + `reportCountChanged` branch (NO seam, NO `flashCleared` branch, NO
+`globalThis` fn). No w2 forward-flag. (Supersedes the placeholder, the Part-2 "Known
+limitation", and the withdrawn seam-(a)/seam-(b) approaches.)
 
-**⚠️ AC5-keyboard residual — FLAGGED to team-lead (kb-side fix needed before STORIES_LOCKED).**
-Verified against kb's shipped (c) code: `clearFlash(tabId)` (`background.js:131-139`) is
-UNCONDITIONAL — `setBadgeText({tabId, text:""})` — and `scheduleFlashClear` (`:166-174`) runs
-it on BOTH the success (2 s) and error (4 s) timeouts. On the keyboard-shortcut **success**
-path the `reportCountChanged` tick paints orange `N+1` at ~capture time, kb's `✓` overwrites
-it, and kb's +2 s `clearFlash` then blanks the tab to empty — so the orange count is GONE until
-the next wake-reconcile, **not just on the error path**. This conflicts with **AC5** ("live
-count … no tab switch") and the **"Live increment on the keyboard-shortcut path"** +
-**"steady-state-after-flash"** E2Es (which assert the badge shows the count after the `✓`
-resets, no tab switch). fe-003 cannot fix this alone (no post-flash signal under (c) — that is
-what the seam provided). **Recommended fix (kb-side, keeps fe-003 no-seam):** make kb's
-`clearFlash` GUARDED — clear only if the tab's badge still shows kb's own `✓`/`!`
-(`getBadgeText({tabId})` check) — so a tick-painted count is preserved and only a genuine error
-flash clears to empty (making the "error-only cosmetic residual" framing actually true).
-Alternatively re-adopt seam-(b). **Pending team-lead/BOSS reconciliation.**
+**AC5 holds via kb's GUARDED `clearFlash` (commit `e87d247`).** The AC5 gap I flagged — kb's
+originally-UNCONDITIONAL `clearFlash` blanked the keyboard-**success** count at teardown — is
+fixed kb-side: `clearFlash` now does `await chrome.action.getBadgeText({tabId})` and clears
+ONLY if the tab still shows kb's own `✓`/`!`. So a `reportCountChanged`-painted count survives
+the flash teardown (kb sees the count, not its `✓`, and skips the clear) → the keyboard-success
+live-count + "steady-state-after-flash" E2Es pass with **no tab switch**. kb's regression test
+`onCommand_successFlashTeardown_doesNotBlankRepaintedCount` FAILS against the unguarded version
+and PASSES with the guard; cohort `node --test` 100/100. **Residual:** only a genuine **error**
+capture (no tick) leaves the badge briefly empty after its `!` self-clears, until the next
+wake-reconcile — error-only cosmetic, healed by the existing wake path. No fe-003 code change.
+(Audit trail: the unconditional-`clearFlash` evidence at `background.js:131-139` / `:166-174`
+that prompted the guard is preserved in `## History`.)

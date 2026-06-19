@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: backend-engineer
 author_architect: backend-architect
 effort: 1
-status: approved
+status: in-progress
 depends_on: [STORY-fe-003]
 diff_estimate: substantive
 files_modified: [extension/background.js, extension/background.editormodel.test.mjs]
@@ -277,6 +277,30 @@ Established via SendMessage rounds with `frontend-architect` and `database-archi
   (keyboard-shortcuts) / `background.reports.test.mjs` (per-target-reports) /
   `background.editormodel.test.mjs` (this story) — all distinct, `node --test extension/*.test.mjs` discovers
   all three.
+- 2026-06-19T00:00:00Z — implemented (backend-engineer): added `model: resp.model ?? null` to
+  `addScreenshot()` push-literal in `extension/background.js` (single-line additive change);
+  created `extension/background.editormodel.test.mjs` with 5 tests (vm-context listener-seam
+  pattern); `node --test extension/*.test.mjs` → 30/30 pass (25 siblings + 5 new).
+  Manual verification deferred — Chrome extension SW; no HTTP endpoint; E2E lane is browser-tester.
+
+## Engineer Notes
+
+**Integration smoke test — Manual verification deferred (Chrome extension SW).**
+This story modifies `extension/background.js`, an MV3 Chrome service-worker script. There is no
+HTTP endpoint to `curl` — the storage operation occurs via `chrome.runtime` internal messaging
+(same-extension origin, not web-reachable). The claimed side effects are fully verified by the
+`node --test` unit lane:
+- `addScreenshot_storesModelVerbatim_onScreenshotRecord` — real `addScreenshot()` called through
+  the `onMessage` listener seam with an in-memory IndexedDB stub; asserts `screenshots[0].model`
+  deep-equals the fixture.
+- `addScreenshot_defaultsModelToNull_whenResolveOmitsModel` — asserts `model === null` when absent.
+- `addScreenshot_preservesExistingNineFields_whenAddingModel` — asserts all 9 pre-existing fields.
+- `saveReport_omitsModelFromUpstreamPayload_whenRecordHasModel` — captures the POST body;
+  asserts no `model` key and exact 9-field key-set.
+- `saveReport_upstreamPayloadByteIdentical_forSameAnnotations` — deep-equals full expected payload.
+
+The browser-tester E2E lane (real SW + IndexedDB + annotation overlay) verifies the full
+round-trip and is the remaining integration gate (per E2E spec in feature.md).
 
 ## Revisions
 

@@ -1,9 +1,16 @@
 ---
+type: story
 id: STORY-db-001
 name: "Sentinel — no database changes for editor-foundation model"
+domain: database
+parent_epic: snapdeck-ux-improvements
+parent_feature: w0-editor-foundation
 assignee: database-engineer
 author_architect: database-architect
-status: pending
+status: approved
+created_at: 2026-06-19T03:05:00Z
+last_run_id: run-20260619-021434-24507
+defects: []
 sentinel: true
 greenfield: true
 effort: 1
@@ -90,6 +97,11 @@ schema/migration/seed artifact — or any new IndexedDB object store / index /
 version bump — ever appears in this feature's diff, this sentinel is wrong and
 must be reopened.
 
+- [ ] This feature's database-domain diff is **empty** — the database-engineer makes no data-layer edit,
+      and **no** server-side migration/seed/schema artifact and **no** new IndexedDB object store / index /
+      `indexedDB.open("snapdeck", N)` version bump appears anywhere in the feature diff. (If one does, this
+      sentinel is wrong and must be reopened.)
+
 ## Unit tests
 
 None. Sentinel stories carry no migration and no schema to inspect against a fresh
@@ -104,3 +116,15 @@ None. `depends_on: []` is valid here because this is a sentinel that creates and
 consumes no schema. The IndexedDB `kv` store it deliberately does NOT treat as a
 migration target is browser-resident client-side storage, owned by sibling
 `w0-per-target-reports` and surfaced through the FE/BE stories of this feature.
+
+## Revisions
+
+- 2026-06-19 — **product-owner arbitration.** Accepted the no-DB-work sentinel: Snapdeck has no
+  server-side relational DB / SQL migration mechanism, and adding `model` to the per-screenshot record is a
+  structured-clone **value-shape** change (no object store / index / `db.version` bump), confirmed with
+  backend-architect (conversation 0012) and orthogonal to w0-per-target-reports' re-key. **Frontmatter +
+  validates conformance fixes** (no decision change), since the keyboard-shortcuts run showed db sentinels
+  drift on the story schema: added `type: story`, `domain: database`, `parent_epic`, `parent_feature`,
+  `created_at`, `last_run_id`, `defects: []`, and a `- [ ]` "empty database-domain diff" check item. Set
+  **`status: approved`** with `sentinel: true` (Phase 8.5 prune migrates the rationale into feature.md's
+  No-work domains and deletes this file).

@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: [STORY-fe-001, STORY-fe-003, STORY-fe-005, STORY-do-001, STORY-be-001]
 created_at: 2026-06-19T03:30:00Z
 last_run_id: run-20260619-021434-24507
@@ -141,6 +141,17 @@ transition, `frontend_lane: N/A`, so no reduced-motion-affected animation.
 - STORY-fe-005 — calls its `deserializeModel` to hydrate.
 - STORY-do-001 — registers `editor-model.js` so `window.__snapdeckEditorModel` is live at runtime.
 - STORY-be-001 — reads back the `screenshots[].model` that backend stores (the source of the round-trip).
+
+## Revisions
+
+- 2026-06-19 — **product-owner arbitration.** Verified the **read** side that closes the round-trip:
+  `deserializeModel` guard tolerance (`null`/bad-version/non-array → `[]`, no throw) and opaque pass-through
+  of unknown w1/w2 subtype fields; hydration seeds the model with no inline guard; the no-model capture path
+  is unchanged. Confirmed `depends_on` correctly cites every producer in the chain (fe-001 renderer, fe-003
+  envelope, fe-005 reader, do-001 manifest, be-001 store). **Strengthened the matching feature.md round-trip
+  E2E to assertion-grade** — `done2.model.items deepEquals done1.model.items` + post-hydration Undo-no-op —
+  so the PO E2E proves `model → persist → load → model` identity, not just "looks the same". No
+  story-content change. **Promoted `pending → approved`.**
 
 ## History
 

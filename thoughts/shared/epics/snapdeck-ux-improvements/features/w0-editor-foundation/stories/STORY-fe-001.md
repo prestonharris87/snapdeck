@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: []
 created_at: 2026-06-19T03:10:00Z
 last_run_id: run-20260619-021434-24507
@@ -164,6 +164,14 @@ reduced-motion-affected animation. (Consistent with feature.md `Motion E2E: n/a`
 ## Dependencies
 
 none — pure additive extension of the editor's model/render/draw/toolbar; no API surface consumed.
+
+## Revisions
+
+- 2026-06-19 — **product-owner arbitration.** Verified the generic `type:"box"` subtype decision against
+  `scope.md` §"Contract surfaces" (the open design decision): a minimal, model-only box is the least-rework
+  seed for w1 (text-box subtype on the same `{x,y,width,height}` base) and w2 (rectangle restyle), and
+  keeps the lossy projection truly frozen (box is never projected). No story-content change required.
+  **Promoted `pending → approved`.**
 
 ## History
 

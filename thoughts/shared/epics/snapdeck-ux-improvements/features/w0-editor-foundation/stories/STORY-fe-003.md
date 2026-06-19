@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: [STORY-fe-001, STORY-fe-005, STORY-do-001]
 created_at: 2026-06-19T03:30:00Z
 last_run_id: run-20260619-021434-24507
@@ -177,6 +177,19 @@ PNG: gate `annotated` on `model.length` (provably byte-identical for the frozen 
 - STORY-fe-005 — `finish()` calls its `serializeModel` / `projectAnnotations` (the pure module + node tests).
 - STORY-do-001 — registers `editor-model.js` in the manifest so `window.__snapdeckEditorModel` is live at runtime.
 - Producer of the FE→BE wire consumed by STORY-be-001 (it `depends_on` this story).
+
+## Revisions
+
+- 2026-06-19 — **product-owner arbitration.** Verified this is the **producer** side of the FE→BE wire
+  (contract surface #2): `resp.model = serializeModel(model)` → `{version:1, items}` is additive and
+  always present; `annotations` routed through `projectAnnotations(model)` stays byte-frozen with the box
+  excluded; the `annotated` gate widening from `annotations.length` to `model.length` is provably
+  byte-identical for the frozen cases (arrow/text project 1:1) and only changes the new box-bearing case.
+  **Strengthened the matching feature.md E2E ("arrow-only Done emits a byte-identical lossy projection") to
+  assertion-grade** — explicit `annotations deepEquals` a frozen fixture + `Object.keys(resolvePayload)`
+  delta of exactly `"model"` + the 9-field `/report/save` key-set assertion — so the PO E2E and this
+  story's `validates` enforce the same byte-freeze. No story-content change. **Promoted `pending →
+  approved`.**
 
 ## History
 

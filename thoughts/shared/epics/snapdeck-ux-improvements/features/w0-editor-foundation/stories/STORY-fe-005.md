@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: [STORY-fe-001]
 created_at: 2026-06-19T03:55:00Z
 last_run_id: run-20260619-021434-24507
@@ -166,6 +166,16 @@ In-browser, `editor.js` reads `window.__snapdeckEditorModel` (live because STORY
 STORY-fe-001 (the `box` item shape that `projectAnnotations` excludes and `serializeModel` carries is
 established there). Consumed at runtime by STORY-fe-003 / STORY-fe-004; registered in the manifest by
 STORY-do-001 (which `depends_on` this story — the file must exist before it is registered).
+
+## Revisions
+
+- 2026-06-19 — **product-owner arbitration.** Verified this is the headless pure core mandated by the BOSS
+  HYBRID ruling — `serializeModel`/`projectAnnotations`/`deserializeModel` are side-effect-free, node-
+  importable, and own the round-trip-identity + byte-frozen-projection + guard invariants in
+  `extension/editor.model.test.mjs`. Confirmed the `__snapdeckEditorModel` global name matches do-001's
+  manifest contract and the test filename does not collide with the cohort's other `*.test.mjs` files.
+  This module is the load-bearing dependency of the `fe-005 → do-001 → fe-003/fe-004` chain. No
+  story-content change. **Promoted `pending → approved`.**
 
 ## History
 

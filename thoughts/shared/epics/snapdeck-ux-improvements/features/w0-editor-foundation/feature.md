@@ -64,8 +64,10 @@ developer-facing annotation tool, not the project's component-library UI; `skip_
       coordinate space `{w,h,dpr}` already on the record).
 - [ ] On ✓ Done, the editor→background resolve payload carries the existing lossy `annotations`
       projection **unchanged** AND a new **additive** lossless `model` field representing every
-      annotation (arrows + box-shaped). The exact `model` envelope shape is ratified by architects
-      (proposed: `{ version: 1, items: [...] }`).
+      annotation (arrows + box-shaped). Envelope **ratified & frozen** (STORIES_LOCKED) as
+      `{ version: 1, items: [ {id,type:"arrow",x1,y1,x2,y2} | {id,type:"box",x,y,width,height} |
+      {id,type:"text",x,y,text} ] }`; `items` are plain JSON and are stored **opaquely** so w1/w2
+      box-subtype fields survive with zero backend change.
 - [ ] The lossy `annotations` projection and the upstream `/report/save` payload are **byte-for-byte
       identical** to pre-feature output for the same set of annotations — same field names, same
       coordinate rounding (`Math.round`), same `meta.viewport`. The only new field on the resolve
@@ -132,12 +134,17 @@ reload involved, so no re-auth step applies to the round-trip).
 
 ### Test: arrow-only Done emits a byte-identical lossy projection (no regression)
 
-**Given** the in-page editor is open on a captured localhost screenshot with the arrow tool active
-**When** the dev draws one or more arrows (no box-shaped annotations) and clicks "✓ Done"
-**Then** the resolve payload's `annotations` array is byte-for-byte identical to the pre-feature output
-for the same arrows — same `{id, type:"arrow", from:[round x1, round y1], to:[round x2, round y2]}`
-shape, same coordinate rounding, same `meta.viewport.{w,h,dpr}` — and the resulting `/report/save`
-payload is unchanged; the only field added to the resolve payload versus pre-feature is `model`.
+**Given** the in-page editor is open on a captured localhost screenshot and a reproducible fixture of two
+arrows drawn at known coordinates (no box-shaped annotations)
+**When** the dev draws those arrows and clicks "✓ Done"
+**Then** the resolve payload's `annotations` array **`deepEquals`** the frozen expected fixture
+`[{ id, type:"arrow", from:[<round x1>,<round y1>], to:[<round x2>,<round y2>] }, …]` — identical field
+names, order, and `Math.round` coordinates in the `meta.viewport.{w,h,dpr}` space — **and**
+`Object.keys(resolvePayload).sort()` differs from the pre-feature key set by exactly the one added key
+`"model"` (nothing else added, removed, or reshaped) — **and** the subsequent `/report/save` body's
+`screenshots[0]` key set is **exactly** the 9 frozen projection fields
+(`url,title,captured_at,viewport,original_png_b64,annotated_png_b64,annotations,console,network_failures`)
+with **no** `model` key (upstream payload byte-identical to pre-feature).
 
 ### Test: existing arrow interactions are preserved
 
@@ -159,14 +166,17 @@ the box to its pre-resize geometry (the resize committed a `snapshot()`).
 
 ### Test: lossless model round-trips through persistence (model → persist → load → model)
 
-**Given** the dev has drawn one arrow and one box-shaped annotation, resized the box in select mode,
-and clicked "✓ Done"
-**When** the stored screenshot record's persisted `model` is read back from the local in-progress
-report store and reloaded into a fresh editor instance (no page reload / no re-login — the store is the
-extension's own service-worker store)
-**Then** the stored record carries BOTH the lossy `annotations` projection AND the lossless `model`,
-and the reconstructed editor contains the same arrow (endpoints) and the same box (`{x,y,width,height}`)
-with no geometry or content drift — `model → persist → load → model` is identity.
+**Given** the dev has drawn one arrow and one box-shaped annotation and resized the box in select mode
+(producing a known `{x,y,width,height}`), then clicked "✓ Done" — call the emitted resolve payload `done1`
+**When** `done1.model` is stored at `screenshots[].model` (via ADD_SCREENSHOT), read back from the local
+in-progress report store, re-sent into a fresh editor via ANNOTATE `{ image, model }`, and that editor is
+immediately committed with "✓ Done" — call the second emitted payload `done2` (no page reload / no
+re-login: the store is the extension's own service-worker IndexedDB, which is not auth-gated)
+**Then** the stored record carries BOTH `annotations` (the lossy projection) AND `model`
+(`{ version:1, items:[…] }`); **`done2.model.items` `deepEquals` `done1.model.items`** — the arrow
+endpoints and the box `{x,y,width,height}` survive verbatim with zero geometry/content drift, so
+`model → persist → load → model` is identity; **and** immediately after hydration Undo is a no-op (the
+hydrated state is the undo baseline).
 
 ### Motion E2E
 
@@ -177,7 +187,17 @@ branded animation/transition. Animated text/box styling is owned by w1-text-box-
 
 ## Stories (populated by architects)
 
-- (none yet — architects populate STORY-fe / STORY-be / STORY-do during /mat_write_feature)
+Listed in dependency/execution order (the `fe-005 → do-001 → fe-003 → be-001 → fe-004` chain plus the
+independent box + transformer stories). All `approved` after PO arbitration 2026-06-19.
+
+- [ ] STORY-fe-001 — Box annotation primitive: model item, render, draw tool (frontend-engineer) · depends_on: []
+- [ ] STORY-fe-005 — Pure model-transform module + node:test (serialize/project/deserialize) (frontend-engineer) · depends_on: [STORY-fe-001]
+- [ ] STORY-do-001 — Register editor-model.js content script in manifest (devops-engineer) · depends_on: [STORY-fe-005]
+- [ ] STORY-fe-002 — Shared Konva.Transformer move/resize + box select mode (frontend-engineer) · depends_on: [STORY-fe-001]
+- [ ] STORY-fe-003 — Wire finish() serialize via pure module (projection frozen) (frontend-engineer) · depends_on: [STORY-fe-001, STORY-fe-005, STORY-do-001]
+- [ ] STORY-be-001 — Persist lossless editor model on screenshot record (backend-engineer) · depends_on: [STORY-fe-003]
+- [ ] STORY-fe-004 — Model hydration on editor open via pure deserializeModel (frontend-engineer) · depends_on: [STORY-fe-001, STORY-fe-003, STORY-fe-005, STORY-do-001, STORY-be-001]
+- [ ] STORY-db-001 — Sentinel: no database changes (database; pruned at plan-lock) · depends_on: []
 
 ## Defects (populated as found)
 

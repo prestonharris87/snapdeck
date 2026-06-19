@@ -2,11 +2,15 @@
 name: "Register editor-model.js content script in manifest"
 type: story
 id: STORY-do-001
-epic: snapdeck-ux-improvements
-feature: w0-editor-foundation
+domain: devops
+parent_epic: snapdeck-ux-improvements
+parent_feature: w0-editor-foundation
 assignee: devops-engineer
 author_architect: devops-architect
-status: pending
+status: approved
+created_at: 2026-06-19T03:30:00Z
+last_run_id: run-20260619-021434-24507
+defects: []
 sentinel: false
 effort: 1
 diff_estimate: mechanical
@@ -89,15 +93,18 @@ Constraints:
 
 ## How we validate
 
-- **Manifest loads clean:** load the unpacked extension at `chrome://extensions`; the editor
-  content script injects on a `http://localhost/*` page with **no** "Could not load
-  javascript …" error in the extension's console.
-- **Global ordering holds:** on a captured localhost page, `globalThis.__snapdeckEditorModel`
-  is defined by the time `editor.js`'s `ANNOTATE` handler runs (FE's fe-003/fe-004 exercise
-  this; this story only guarantees the load-order that makes it possible).
-- **No scope creep:** `git diff extension/manifest.json` shows exactly one added array element
-  (`"content/editor-model.js"`) in the second `content_scripts` entry and nothing else — no
-  permission/host/command delta. (devops-validator auto-rejects any unrelated manifest change.)
+- [ ] **Manifest loads clean:** load the unpacked extension at `chrome://extensions`; the editor
+      content script injects on a `http://localhost/*` page with **no** "Could not load
+      javascript …" error in the extension's console.
+- [ ] **Global ordering holds:** on a captured localhost page, `globalThis.__snapdeckEditorModel`
+      is defined by the time `editor.js`'s `ANNOTATE` handler runs (FE's fe-003/fe-004 exercise
+      this; this story only guarantees the load-order that makes it possible).
+- [ ] **No scope creep:** `git diff extension/manifest.json` shows exactly one added array element
+      (`"content/editor-model.js"`) in the second `content_scripts` entry and nothing else — no
+      permission/host/command delta. (devops-validator auto-rejects any unrelated manifest change.)
+- [ ] **JSON valid + path exists:** `node -e "JSON.parse(require('fs').readFileSync('extension/manifest.json','utf8'))"`
+      exits 0, and `extension/content/editor-model.js` resolves on disk, ordered **before**
+      `content/editor.js` in the `document_idle` entry.
 
 ## Unit tests
 
@@ -135,3 +142,15 @@ existing file under `extension/`. No network, no browser — pure file I/O, fits
   `STORY-do-001` because they need the global live at runtime — yielding the clean chain
   `fe-005 → do-001 → fe-003/fe-004` (no cycle; fe-005's own node tests import the file from
   disk and do not depend on the manifest).
+
+## Revisions
+
+- 2026-06-19 — **product-owner arbitration.** Verified the load-order contract: `editor-model.js` must be
+  registered in the **`document_idle` isolated-world** entry, immediately **before** `editor.js`, so
+  `globalThis.__snapdeckEditorModel` is live when fe-003/fe-004 run. Confirmed `depends_on: [STORY-fe-005]`
+  is correct (the registered path must exist on disk first) and the chain `fe-005 → do-001 → fe-003/fe-004`
+  is acyclic. **Frontmatter conformance fixes** (no behavior change): added the required `domain: devops`
+  field (drives devops-validator selection), renamed `epic`/`feature` → `parent_epic`/`parent_feature` to
+  match the story schema + siblings, added `created_at`/`last_run_id`/`defects: []`. **Converted "How we
+  validate" prose bullets to a `- [ ]` checklist** and added an explicit JSON-valid + path-exists +
+  load-order check item. **Promoted `pending → approved`.**

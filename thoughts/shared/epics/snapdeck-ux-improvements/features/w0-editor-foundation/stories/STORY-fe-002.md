@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 3
-status: pending
+status: approved
 depends_on: [STORY-fe-001]
 created_at: 2026-06-19T03:10:00Z
 last_run_id: run-20260619-021434-24507
@@ -177,6 +177,16 @@ reduced-motion-affected behavior. (Consistent with feature.md `Motion E2E: n/a`.
 ## Dependencies
 
 STORY-fe-001 (needs the `box` model item + `renderBox` to attach select/resize to).
+
+## Revisions
+
+- 2026-06-19 — **product-owner arbitration.** Confirmed `attachBoxTransformer(node, item)` is the frozen
+  **contract surface #3** that w1-text-box and w2-rectangle attach to (single shared transformer, not
+  per-tool). Verified the load-bearing detail that `transformend` **bakes `scaleX/scaleY` into
+  `width/height` and resets scale to 1** — this is what keeps the persisted geometry correct so the
+  STORY-fe-003/004 round-trip does not drift. Confirmed the Escape→deselect-if-selected-else-finish change
+  matches feature.md §"UX patterns / interaction notes". No story-content change. **Promoted
+  `pending → approved`.**
 
 ## History
 

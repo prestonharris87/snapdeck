@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: backend-engineer
 author_architect: backend-architect
 effort: 1
-status: pending
+status: approved
 depends_on: [STORY-fe-003]
 diff_estimate: substantive
 files_modified: [extension/background.js, extension/background.editormodel.test.mjs]
@@ -277,3 +277,15 @@ Established via SendMessage rounds with `frontend-architect` and `database-archi
   (keyboard-shortcuts) / `background.reports.test.mjs` (per-target-reports) /
   `background.editormodel.test.mjs` (this story) — all distinct, `node --test extension/` discovers
   all three.
+
+## Revisions
+
+- 2026-06-19 — **product-owner arbitration.** Verified the **consumer** side of the FE→BE wire matches the
+  producer (STORY-fe-003) exactly: stores `resp.model ?? null` **verbatim/opaque** at `screenshots[].model`
+  with no field whitelist (so w1/w2 subtype fields survive with zero backend change), and the `/report/save`
+  whitelist stays byte-frozen — the `saveReport` test locks this with an exact 9-field key-set assertion.
+  Confirmed `depends_on: [STORY-fe-003]` is the correct producer→consumer direction. Confirmed the
+  orthogonal-region merge story on the shared `extension/background.js` (per-target-reports re-keys
+  `getReport`/`setReport`; keyboard-shortcuts adds `onCommand`; this story edits the `addScreenshot()` push
+  literal) and the distinct `*.test.mjs` filename — no collision. No story-content change. **Promoted
+  `pending → approved`.**

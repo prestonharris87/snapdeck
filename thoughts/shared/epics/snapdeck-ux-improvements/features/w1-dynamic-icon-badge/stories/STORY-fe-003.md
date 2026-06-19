@@ -20,15 +20,17 @@ diff_estimate: substantive
 
 # Story: Live-count freshness trigger + transient-flash reconcile
 
-> ⚠️ **SKELETON — the trigger CONTRACT is LOCKED (team-lead, 2026-06-19); finalize
-> once w0's emission freezes.** Coordination-point #4 resolved as **Option A**: w0 emits
-> a guarded `chrome.storage?.session?.set?.({ reportCountChanged: {port,count,ts} })` tick
-> (a separate released-work defect tracked on the defect subchannel); this story consumes
-> it via a top-level `chrome.storage.session.onChanged` listener. The **reconcile** half
-> below is FINAL. The w0-emission linkage is captured at the FEATURE level (feature.md
-> `depends_on: [w0-per-target-reports]`) + BOSS serialization — do NOT add a cross-feature
-> id to this story's `depends_on` (story ids are bare/non-qualified; w0 also has a
-> `STORY-fe-003`). Keep `depends_on: [STORY-fe-001, STORY-fe-002]`.
+> ✅ **FINAL — trigger contract LOCKED + w0 producer FROZEN (commit `6512a12`).**
+> Coordination-point #4 resolved as **Option A**: w0-per-target-reports' `background.js`
+> ALREADY emits the guarded tick `chrome.storage?.session?.set?.({ reportCountChanged:
+> {port,count,ts} })` (via `emitReportCountChanged(port,count)`, null-guarded; 3 call
+> sites — `addScreenshot`→`screenshots.length`, `saveReport` success→`0`, `CLEAR_REPORT`→
+> `0`). This story consumes it via a top-level `chrome.storage.session.onChanged` listener.
+> Per BOSS serialization the producer is MERGED AHEAD of us, so the consumer code (written
+> in `/mat_implement_feature`) lands on top of an existing emit. The w0 linkage stays at the
+> FEATURE level (feature.md `depends_on: [w0-per-target-reports]`) — NOT in this story's
+> `depends_on` (story ids are bare/non-qualified; w0 also has a `STORY-fe-003`). Keep
+> `depends_on: [STORY-fe-001, STORY-fe-002]`.
 
 ## What we're doing
 
@@ -46,8 +48,9 @@ capture/save:
    owns, with **no edit to `runCaptureCommand()`** or any released seam.
 
 Both reduce to: **re-derive + repaint the active tab (fe-002's `refreshActiveTab`)
-at the moment a capture/save changes the count.** The only open question is the
-*signal* for that moment (the trigger), which is the gated part.
+at the moment a capture/save changes the count.** The *signal* for that moment is the
+locked `reportCountChanged` tick — the w0 producer is already merged/frozen (commit
+`6512a12`), so this consumer is final and lands on top of an existing emit.
 
 ## What it should look like
 
@@ -79,7 +82,7 @@ the global (no-`tabId`) badge** for that tab. fe-003 leans on this:
 
 ### Part 1 — Live-count trigger
 
-**▶ Option A (LOCKED contract — team-lead 2026-06-19) — observable tick + `storage.session.onChanged`:**
+**▶ Option A (LOCKED + w0 producer FROZEN, commit `6512a12`) — observable tick + `storage.session.onChanged`:**
 
 > **Why `storage.session.onChanged`, NOT a 2nd `onMessage` listener:** a SECOND top-level
 > `chrome.runtime.onMessage.addListener` would BREAK the released sibling suites — their
@@ -88,13 +91,12 @@ the global (no-`tabId`) badge** for that tab. fe-003 leans on this:
 > OUR listener and hang (no `sendResponse`). Those test files are released and un-editable.
 > The `storage.session` tick is equivalently tiny on the released side and harness-safe.
 
-- **Released-work defect (separate story; NOT part of this FE story's diff):** w0 emits a
-  guarded, fire-and-forget, **null-port-gated** tick **AFTER the IDB write** — after
-  `await setReport(port, r)` in `addScreenshot()` (`background.js:227`),
-  `await clearReport(...)` in `saveReport()` (`background.js:258`), and in the
-  `CLEAR_REPORT` handler (`background.js:185`):
-  `chrome.storage?.session?.set?.({ reportCountChanged: { port, count, ts: Date.now() } })`.
-  (BOSS-ratified 2026-06-19 — final; no further mechanism churn.)
+- **Producer — already MERGED/FROZEN in w0-per-target-reports (commit `6512a12`; NOT part
+  of this FE story's diff):** `emitReportCountChanged(port, count)` (null-guarded) emits a
+  guarded, fire-and-forget tick **after the IDB write** at 3 call sites — `addScreenshot()`
+  → `r.screenshots.length`, `saveReport()` success → `0`, and the `CLEAR_REPORT` handler →
+  `0`: `chrome.storage?.session?.set?.({ reportCountChanged: { port, count, ts: Date.now() } })`.
+  (BOSS-ratified + verified on disk 2026-06-19 — final; no further mechanism churn.)
 - **This FE story (consumer):** a NEW top-level listener
   `chrome.storage?.session?.onChanged?.addListener?.((changes) => { … })` (double
   optional-chain for frozen-mock tolerance — the released suites stub no `storage`). The
@@ -160,11 +162,12 @@ lagging until the next tab event). Do not implement unless Option A is reversed.
   `addScreenshot` → `setReport`. save: `onMessage(SAVE_REPORT)` → `saveReport` →
   `clearReport`. clear: `onMessage(CLEAR_REPORT)` → `clearReport`.
 - **No-regression assertion:** fe-003's OWN diff does NOT edit `runCaptureCommand`,
-  `addScreenshot`, `saveReport`, the `CLEAR_REPORT` handler, or the released `onMessage`
-  listener — all released w0/kb seams stay byte-identical. (Option A's tick write is a
-  SEPARATE BOSS-owned released-work defect, tracked outside this FE story's diff.) fe-003
-  adds only a new `storage.session.onChanged` consumer and refines fe-002's green/gray
-  badge-clear arg. No second `onMessage` listener is added (harness-safety, above).
+  `addScreenshot`, `saveReport`, the `CLEAR_REPORT` handler, `emitReportCountChanged`, or
+  the released `onMessage` listener — all released w0/kb seams stay byte-identical. (The
+  `reportCountChanged` emit is the already-merged w0 producer at commit `6512a12`, outside
+  this FE story's diff.) fe-003 adds only a new `storage.session.onChanged` consumer and
+  refines fe-002's green/gray badge-clear arg. No second `onMessage` listener is added
+  (harness-safety, above).
 - **Explicitly changing:** ADD `chrome.storage.session.onChanged` consumer →
   `refreshActiveTab`; refine green/gray clear to `setBadgeText({tabId, text:null})` for
   flash fall-through.
@@ -175,9 +178,10 @@ lagging until the next tab event). Do not implement unless Option A is reversed.
 - Edit only `extension/background.js` (new `onChanged` consumer + green/gray clear
   refinement) and `extension/background.icon-badge.test.mjs` (add fe-003 cases). No
   manifest/permission/asset change.
-- **Released-code boundary (AC11):** do NOT modify `runCaptureCommand()` or any released
-  seam in THIS story. The Option-A tick is a separate BOSS released-work defect; if BOSS
-  declines, fall back to Option B (do not unilaterally edit released code).
+- **Released-code boundary (AC11):** do NOT modify `runCaptureCommand()`,
+  `emitReportCountChanged`, or any released seam in THIS story. The `reportCountChanged`
+  tick is the already-merged w0 producer (commit `6512a12`) — consume it; never edit
+  released code.
 - **Defensive registration:** register as
   `chrome.storage?.session?.onChanged?.addListener?.(...)` (double optional-chain) so the
   released sibling suites — whose frozen `chrome` mock stubs NO `storage` at all
@@ -279,14 +283,14 @@ Extend **`extension/background.icon-badge.test.mjs`**. Add a capturing
 ## Dependencies
 
 `depends_on: [STORY-fe-001, STORY-fe-002]` — **within-feature only**. The trigger/consumer
-half ALSO consumes the `reportCountChanged` tick added to **w0-per-target-reports**'
-`background.js` (the locked `defect-screenshot-added-ping` contract) — but this
-cross-feature linkage is expressed as PROSE here, **NOT** as a `depends_on` entry: story
-ids in this framework are bare/non-feature-qualified (w0-per-target-reports ALSO has a
-`STORY-fe-003`), so a cross-feature id in `depends_on` would collide / resolve as unknown
+half ALSO consumes the `reportCountChanged` tick that **w0-per-target-reports** already
+emits in `background.js` (MERGED/FROZEN at commit `6512a12`, `emitReportCountChanged`) —
+but this cross-feature linkage is expressed as PROSE here, **NOT** as a `depends_on` entry:
+story ids in this framework are bare/non-feature-qualified (w0-per-target-reports ALSO has
+a `STORY-fe-003`), so a cross-feature id in `depends_on` would collide / resolve as unknown
 (`validate-depends-on.py`). The cross-feature dependency is captured correctly by
-feature.md's `depends_on: [w0-per-target-reports]` + BOSS's w0-lands-first serialization.
-The reconcile half (Part 2) depends only on fe-001/fe-002.
+feature.md's `depends_on: [w0-per-target-reports]` + BOSS's (already-satisfied) w0-lands-
+first serialization. The reconcile half (Part 2) depends only on fe-001/fe-002.
 
 ## History
 
@@ -321,3 +325,8 @@ The reconcile half (Part 2) depends only on fe-001/fe-002.
   block, the `droppedTick_wakeReconcilesFromGetState` unit case, and the
   badge-correct-after-dropped-tick validation item (PO to add the matching feature.md E2E
   spec — flagged to team-lead).
+- 2026-06-19 — frontend-architect: **FINALIZED** — w0 producer verified frozen on disk
+  (commit `6512a12`, `emitReportCountChanged`, key `reportCountChanged`, shape
+  `{port,count,ts}` — exact match to lock). Dropped the SKELETON/HELD markers; the
+  consumer half is now final (consume the existing emit). Ready for Contrarian 5.5 + PO
+  arbitration.

@@ -134,16 +134,34 @@ surface. The popup is unchanged.
 
 ## Unit tests
 
-No JavaScript unit-test runner exists for the MV3 extension (no `package.json` /
-test harness under `extension/`). Behavioral coverage is the Product Owner's E2E
-specs in `feature.md` § E2E test spec, executed by `browser-tester` against the
-loaded extension's message API:
+**Unit lane (HYBRID ruling 2026-06-19):** `node --test` (`node:test` +
+`node:assert/strict`, ESM, zero-dep, no `package.json`). This story **appends**
+GET_STATE-port cases to the SAME feature test file STORY-fe-001 creates —
+`extension/background.reports.test.mjs` (feature-distinct from sibling
+`w0-keyboard-shortcuts`' `extension/background.test.mjs`). Same harness: load
+`background.js` into a `node:vm` context with hand-written `chrome.tabs.query` +
+in-memory `indexedDB` stubs, capture the `onMessage` listener, invoke it with
+`{ type:"GET_STATE" }`, await `sendResponse`. `unit-tester` Phase 5a runs
+`node --test extension/`.
 
-- `feature.md` E2E "Two-port capture isolation" — asserts `GET_STATE` returns
-  `port: 5101` on tab A and `port: 5102` on tab B (this story's `port` field).
-- `feature.md` E2E "Non-target tab reports empty" — asserts `GET_STATE` on a
-  non-localhost tab returns `{ count: 0, note: "", port: null }` (this story's
-  non-target formalization).
+Cases (test file `extension/background.reports.test.mjs`):
+
+- `GET_STATE_localhostTarget_includesResolvedPort` — `tabs.query` resolves
+  `http://localhost:5101`, `report:5101` holds 1 screenshot + note "n"; the awaited
+  `sendResponse` deep-equals `{ count: 1, note: "n", port: 5101 }`.
+- `GET_STATE_secondPort_returnsThatPort` — `tabs.query` resolves
+  `http://localhost:5102`; `sendResponse.port === 5102` (pairs with E2E "Two-port
+  capture isolation").
+- `GET_STATE_nonLocalhostTab_returnsEmptyWithNullPort` — `tabs.query` resolves
+  `https://example.com`; `sendResponse` deep-equals `{ count: 0, note: "",
+  port: null }` (the non-target sentinel `w1-dynamic-icon-badge` consumes).
+- `GET_STATE_aboutBlank_returnsNullPort` — `tabs.query` resolves `about:blank`;
+  `sendResponse.count === 0` and `sendResponse.port === null`.
+
+**Integration lane:** `feature.md` § E2E test spec "Two-port capture isolation"
+(asserts `port: 5101` / `port: 5102`) and "Non-target tab reports empty" (asserts
+`{ count: 0, note: "", port: null }`) remain the assertion-grade integration
+coverage, driven by `browser-tester` against the live message API.
 
 ## Dependencies
 

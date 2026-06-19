@@ -236,22 +236,73 @@ UI it already does; no transitions or visual state changes are introduced.
 
 ## Unit tests
 
-No JavaScript unit-test runner exists for the MV3 extension — there is no
-`package.json` or test harness under `extension/` (repo-wide, the only JS test is
-a framework-script test unrelated to the extension). Standing one up is
-devops/test-infra scope, not in this feature. Behavioral coverage is therefore
-the Product Owner's **E2E specs** in `feature.md` § E2E test spec, executed by the
-`browser-tester` teammate against the loaded extension's message API:
+**Unit lane (HYBRID ruling 2026-06-19):** `node --test` — Node's built-in
+`node:test` + `node:assert/strict`, ESM, **zero new dependencies, no
+`package.json`** (same convention as
+`.claude/scripts/__tests__/channel-size-warn.test.js`). `unit-tester` Phase 5a now
+runs `node --test extension/`; these specs are in play.
 
-- `feature.md` E2E "Two-port capture isolation" — verifies `ADD_SCREENSHOT`
-  appends only to the active tab's `report:<port>` and the other port stays
-  independent. (Covers this story's core re-key.)
-- `feature.md` E2E "Note isolation across ports" — verifies `SET_NOTE` writes only
-  the current target's record.
-- `feature.md` E2E "Save isolation — save A clears only A" — verifies
-  `SAVE_REPORT` POSTs `browser_port:5101` and clears only `report:5101`.
-- `feature.md` E2E "Service-worker restart persistence" — verifies per-port
-  reports survive a worker restart (IndexedDB-backed, no module state).
+**Test file:** `extension/background.reports.test.mjs` — feature-distinct name so it
+does NOT collide with sibling `w0-keyboard-shortcuts`'
+`extension/background.test.mjs` on the shared `node --test extension/` run.
+
+**Harness (no source/manifest change):** `background.js` is a classic service
+worker with no exports, so load its source into a `node:vm` context pre-seeded with
+hand-written stubs **before** evaluation — this exposes the top-level declarations
+(`getReport`/`setReport`/`clearReport`/`currentTargetPort`/`handle`) as
+directly-callable context members AND lets the stubbed
+`chrome.runtime.onMessage.addListener` capture the message listener. Stubs:
+`chrome.tabs.query` (returns a configurable active-tab `{ url }`),
+`chrome.runtime.onMessage.addListener` (captures the callback), a tolerant
+`chrome.commands?.onCommand?.addListener` no-op (so a merged sibling listener does
+not throw), and an in-memory `indexedDB` backing the `kv` store with a `Map` plus
+`get`/`put` call counters (for the no-IDB-read assertions). Requires **no change to
+`background.js` or `manifest.json`** (respects `files_not_modified`).
+
+Cases (names `subject_condition_expectation`; the test file is
+`extension/background.reports.test.mjs` for all):
+
+- `getReport_emptyStore_returnsEmptyDefault` — `getReport(5101)` on an empty kv
+  store returns `{ note: "", screenshots: [] }`.
+- `setReport_thenGetReport_roundTripsUnderPortKey` — `setReport(5101, r)` then
+  `getReport(5101)` deep-equals `r`; the in-memory kv has key **`report:5101`**
+  (proves the `report:<port>` key format).
+- `setReport_portIsolation_otherPortUntouched` — after writing `report:5101`,
+  `getReport(5102)` deep-equals the empty default and no `report:5102` key exists —
+  the core cross-port invariant as a fast unit test (vs two live tabs).
+- `clearReport_resetsOnlyThatPort` — with records under 5101 and 5102,
+  `clearReport(5101)` leaves `report:5101` = empty default and `report:5102`
+  deep-equal untouched.
+- `currentTargetPort_localhost_returnsPort` — `chrome.tabs.query` resolves
+  `http://localhost:5101`, so `currentTargetPort()` returns `5101`.
+- `currentTargetPort_127001_returnsPort` — `http://127.0.0.1:5173` returns `5173`.
+- `currentTargetPort_httpsNonLocalhost_returnsNull` — `https://example.com` returns
+  `null` (NOT 443 — proves the localhost gate, not a bare `portOfUrl`).
+- `currentTargetPort_nonLocalhostScheme_returnsNull` — `about:blank` (and
+  `chrome://extensions`) return `null`.
+- `getReport_nullPort_returnsEmptyDefault_noIdbRead` — `getReport(null)` returns
+  the empty default AND the indexedDB stub records **zero `get` calls**.
+- `setReport_nullPort_doesNotWrite` — `setReport(null, { note:"x",
+  screenshots:[{}] })` writes nothing: no `report:null` key and **zero `put` calls**.
+- `GET_STATE_localhostTab_returnsPortScopedCountNote` — invoke the captured
+  `onMessage` listener with `{ type:"GET_STATE" }` while `tabs.query` resolves
+  `localhost:5101` and `report:5101` holds 2 screenshots + note "n"; the awaited
+  `sendResponse` has `count === 2` and `note === "n"`. **Assert these two fields
+  individually (not a strict deep-equal of the whole response)** so the additive
+  `port` field STORY-fe-002 adds later does not break this test.
+- `SET_NOTE_writesOnlyCurrentTargetRecord` — `{ type:"SET_NOTE", note:"A" }` at
+  5101 then `GET_STATE` at 5101 gives `note === "A"`; switch `tabs.query` to 5102
+  and `GET_STATE` gives `note === ""` (per-port note isolation through the public
+  message API).
+
+**Integration lane:** the `feature.md` § E2E test spec specs ("Two-port capture
+isolation", "Note isolation across ports", "Save isolation — save A clears only A",
+"Service-worker restart persistence") remain the assertion-grade **integration**
+coverage — real cross-tab activation, the full `ADD_SCREENSHOT` capture/`ANNOTATE`
+round-trip, the `SAVE_REPORT` controller POST, and a genuine service-worker restart
+through the live message API — driven by `browser-tester` at implement time. The
+unit lane above covers the keying / resolution / null-handling logic in isolation;
+the integration lane proves it end-to-end in a real browser.
 
 (Surfaced to team-lead as an open question: whether to add a JS unit harness for
 the extension via a devops story.)

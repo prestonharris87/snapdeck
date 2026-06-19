@@ -7,7 +7,7 @@ parent_epic: snapdeck-ux-improvements
 parent_feature: w1-draggable-toolbar-toggle
 assignee: devops-engineer
 author_architect: devops-architect
-status: in-progress
+status: validated
 created_at: 2026-06-19T15:40:00Z
 last_run_id: run-20260619-042600-10898
 defects: []
@@ -304,3 +304,15 @@ change. Status `pending → approved`.
 - **Diff:** exactly one `js`-array element added to the `document_idle` isolated-world entry. No permission, `host_permissions`, `web_accessible_resources`, `commands`, or world changes.
 - **Load-order guard (#49):** previously staged/if-present (file was absent); now fires and passes — `index(editor-model) < index(editor-chrome) < index(editor)` and all four `js` paths resolve on disk.
 - **Full suite:** 75/75 pass — no regressions.
+
+## Validation
+
+- result: validated
+- devops-validator: validated — exactly one js-array element (content/editor-chrome.js) in correct order (editor-model < editor-chrome < editor); no permission/host/world/commands scope creep; manifest valid JSON; suite green.
+- honesty-check-validator: passed — only manifest.json + story touched; fe-001 load-order test unmodified and now fully fires (idxModel<idxChrome<idxEditor); 77 tests/88 assertions, 0 fail.
+
+## History
+
+- 2026-06-19T16:27:38Z — orchestrator — validate validated (devops-validator)
+- 2026-06-19T16:27:38Z — orchestrator — honesty passed (honesty-check-validator)
+- 2026-06-19T16:27:38Z — orchestrator — status in-progress → validated

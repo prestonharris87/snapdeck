@@ -7,9 +7,10 @@ parent_epic: snapdeck-ux-improvements
 parent_feature: w1-text-box-autofit
 assignee: devops-engineer
 author_architect: devops-architect
-status: pending
+status: approved
 sentinel: true
 created_at: 2026-06-19T15:35:00Z
+last_run_id: run-20260619-150554-36418
 defects: []
 effort: 1
 diff_estimate: mechanical
@@ -80,6 +81,17 @@ fit fields live **only** in the opaque `model` items that ride the internal edit
 resolve message channel, never in the projection or the saved payload. No API-spec/contract
 document to update.
 
+## How we validate it was done correctly
+
+- [ ] **Unmodified manifest:** this feature's diff touches **no** `extension/manifest.json` — no new
+      `content_scripts[]` entry, no `permissions`/`host_permissions`/`web_accessible_resources`/`commands`
+      change; `content/editor-model.js` + `content/editor.js` stay the already-registered entries.
+- [ ] **No new browser-loaded module:** the only new file (`extension/editor.textbox.test.mjs`) is a
+      `node --test` file, never injected into a page — so it needs no manifest registration (the inverse
+      of the w0 module-extraction seam).
+- [ ] **No CI / build / observability surface touched:** no `package.json`/`Makefile`/bundler/CI job
+      exists to wire into, and none is added; the localhost-only host guard is unchanged.
+
 ## Dependencies
 
 `depends_on: []` — genuinely standalone. There is no devops artifact to produce, so there is
@@ -99,3 +111,14 @@ but per the FE architect's confirmed design that does not happen this feature.
   manifest change. Mirrored to
   `thoughts/shared/epics/snapdeck-ux-improvements/conversations/`. This confirmation is what makes
   the sentinel a team agreement rather than an isolated assumption.
+
+## Revisions
+
+### 2026-06-19 — product-owner arbitration (Phase 6)
+
+Sentinel **verified correct and accepted** — the contrarian pass confirmed nothing browser-loaded is
+extracted (auto-fit stays inline in `editor.js`; `editor-model.js` unchanged; the one new file is a
+`node --test` file, not a content script), so there is genuinely no manifest/registration/CI/permission
+delta. FE peer-confirmation is recorded in `conversations/`. PO changes: **added a `## How we validate`
+checklist** (the sentinel shipped without one — recurring sentinel gap) and **added `last_run_id`** for
+frontmatter conformance with its siblings. Status promoted pending → approved.

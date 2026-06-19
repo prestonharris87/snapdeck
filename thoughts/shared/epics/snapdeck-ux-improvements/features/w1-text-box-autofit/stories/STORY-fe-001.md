@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: []
 created_at: 2026-06-19T15:30:00Z
 last_run_id: run-20260619-150554-36418
@@ -249,3 +249,29 @@ helper (see STORY-fe-002 Finding 1). **Recommendation:** no change required here
 inset to a positive floor; flagged only so the two thresholds are reconciled consciously rather than by
 accident. Do **not** raise the draw threshold to `2*PAD` (that would silently reject legitimately small
 boxes) — fix the clamp in the fit helper.
+
+## Revisions
+
+### 2026-06-19 — product-owner arbitration (Phase 6)
+
+**Finding 1 (info — re-edit→empty deletes the whole committed box): ACCEPTED as intended; AC wording
+clarified (no code change here).** This story makes `editText` box-aware but preserves its commit
+semantics verbatim — the shared empty-removal (`if (!v) model = model.filter(...)`) applies to **both**
+the create flow (intended: no orphan empty boxes — already locked in scope) **and** the re-edit flow
+(double-click, fe-003). **Decision: keep the unified behavior** — re-edit→empty removes the committed box
+(geometry + all), undoable. Rationale: consistency with the locked create-flow empty-removal; a Snapdeck
+text box carries only text, so an emptied box has no annotation value (Google-Slides "retain emptied box"
+parity rejected — Slides boxes hold formatting/other content; ours don't). The contrarian correctly
+caught that the *re-edit* AC framing ("only `text` changes") silently failed on the empty path; that
+contradiction is a wording fix, not a behavior change — clarified in feature.md + the fe-003 re-edit AC
+to distinguish non-empty (geometry preserved) vs empty (box removed), with an E2E note so the
+empty-delete is not filed as a regression. No change to this story's code or its (correct, create-flow)
+empty-removal validate item.
+
+**Finding 2 (info — draw threshold `>4` admits boxes thinner than the fit inset): no change here;
+reconciled in fe-002.** The draw threshold stays `>4` deliberately — raising it to `2*PAD` would
+silently reject legitimately small boxes. The thin-box / negative-inset reconciliation is fixed at the
+fit-helper **clamp + short-circuit** in fe-002 (see fe-002 Revisions, Concern 1). Flagged here only so
+the two thresholds are reconciled consciously rather than by accident.
+
+Status promoted pending → approved. No cross-domain conflict; this story needs no code revision.

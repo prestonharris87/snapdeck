@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: backend-engineer
 author_architect: backend-architect
 effort: 1
-status: pending
+status: approved
 sentinel: true
 depends_on: []
 diff_estimate: mechanical
@@ -79,6 +79,18 @@ Confirmed via SendMessage rounds on 2026-06-19, mirrored to
   the released `w0-per-target-reports` (`report:<port>`) carries `screenshots[].model`
   transparently. DB also sentinels.
 
+## How we validate it was done correctly
+
+- [ ] **Empty backend diff:** this feature's diff touches **no** `extension/background.js` — no change
+      to `addScreenshot()` (still stores `model: resp.model ?? null` verbatim/opaque), `saveReport()`,
+      the `/report/save` field whitelist (`background.js:248-252`, `model` still absent), the
+      `idb`/`idbSet`/`getReport`/`setReport` helpers, or the `indexedDB.open("snapdeck", 1)` version.
+- [ ] **Upstream payload byte-identical:** the `/report/save` body is unchanged for the same annotation
+      set — the new text-item `width`/`height`/fit fields ride inside `screenshots[].model` and never
+      reach the upstream projection (verified at the FE-story / E2E layer; BE contributes no new field).
+- [ ] **No new IPC surface:** no new `chrome.runtime` message type and no new resolve-payload sibling
+      field — the new text-item fields ride **inside** `model.items[]`, not as a new resolve field.
+
 ## Dependencies
 
 None. This is a no-work sentinel — the released opaque `model` persistence already covers
@@ -91,3 +103,15 @@ the text box.
   and database-architect (store-shape unchanged) via SendMessage before writing. Basis:
   released w0-editor-foundation STORY-be-001 opaque `model` persistence
   (`extension/background.js:225`) + frozen `saveReport()` whitelist (lines 248-252).
+
+## Revisions
+
+### 2026-06-19 — product-owner arbitration (Phase 6)
+
+Sentinel **verified correct and accepted** — the contrarian pass independently confirmed
+`addScreenshot()` stores `model: resp.model ?? null` verbatim (`background.js:225`), so the new opaque
+text-item fields genuinely ride with zero backend change; the BE/DB/FE peer-coordination is recorded in
+`conversations/`. The only PO change: **added a `## How we validate it was done correctly` checklist**
+(the sentinel shipped without one — a recurring gap in architect-authored sentinels). Empty-diff +
+byte-identical-upstream + no-new-IPC are the checkable assertions for the backend-validator. Status
+promoted pending → approved.

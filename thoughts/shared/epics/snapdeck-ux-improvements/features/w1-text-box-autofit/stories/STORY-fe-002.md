@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 3
-status: pending
+status: approved
 depends_on: [STORY-fe-001]
 created_at: 2026-06-19T15:30:00Z
 last_run_id: run-20260619-150554-36418
@@ -53,20 +53,42 @@ handlers. **Select/move/resize via the shared transformer + re-fit on resize is 
     outline** (`stroke:"#e53935"`, the feature/arrow red; `strokeWidth` ~2). Interior is hittable
     (the fill makes the body click-selectable, like renderBox's near-transparent fill but here a real
     white fill).
-  - **Text:** `Konva.Text` — **black fill** (`#111111`/`#000`), `width = item.width - 2*PAD`,
-    `wrap:"word"` so Konva wraps glyphs to the box width (no horizontal overflow past the outline),
-    `padding`/inset `PAD` (~6px) from the outline, `lineHeight` default. `fontStyle` normal (not bold).
+  - **Text:** `Konva.Text` — **black fill** (`#111111`/`#000`), `width = innerW` (the **clamped**
+    inset — see below; never the raw `item.width - 2*PAD`), `wrap:"word"` so Konva wraps glyphs to the
+    box width (no horizontal overflow past the outline), `padding`/inset `PAD` (~6px) from the outline,
+    `lineHeight` default. `fontStyle` normal (not bold). Pin an explicit **web-safe `fontFamily`** (a
+    fixed sans-serif stack, e.g. `"Arial, Helvetica, sans-serif"`) on the node — do **not** inherit
+    Konva's default — so the canvas wrap/measurement is as stable as the platform allows across font
+    environments (see **Inset clamp + font determinism** below; contrarian Finding 2 / Concern resolution).
   - Compose the Rect + Text in a **`Konva.Group`** at `{x,y}` with `width/height` set and
     **`clip:{x:0,y:0,width,height}`** so that if even the minimum font cannot fit (degenerate tiny
     box), glyphs are clipped to the box rather than spilling past the red outline.
+- **Inset clamp + degenerate short-circuit (REQUIRED — Concern resolution, see Revisions):** the draw
+  guard (`width>4 && height>4`, STORY-fe-001) admits **thin-but-valid** boxes (e.g. 8×200) whose raw
+  inset `item.width - 2*PAD` (`PAD~6`, `2*PAD=12`) is **≤ 0**. A negative `Konva.Text` width is
+  unspecified and can degrade to one-glyph-per-line on the length-capped text — the one fit path not
+  provably cheap. So **both**: (1) **clamp** `innerW = Math.max(1, item.width - 2*PAD)` and
+  `innerH = Math.max(1, item.height - 2*PAD)` so the fit never sees a non-positive inset; **and** (2)
+  **short-circuit** — when `item.width < 2*PAD || item.height < 2*PAD`, skip the measurement loop
+  entirely and use `TEXT_AUTOFIT_MIN`, relying on the Group `clip` to contain the glyphs. Together these
+  make auto-fit **bounded and cheap even on a thin finite box** (closes the "auto-fit must not throw or
+  hang" contract that `w2-screenshot-gallery` relies on when re-opening arbitrary stored models). The
+  render-time geometry guard (`if (item.width<=0||item.height<=0) return`) does **not** catch `width=8`
+  (it is `>0`), so this clamp is the load-bearing protection, not the guard.
 - **Auto-fit (new helper `fitTextFontSize(textNode, innerW, innerH, cap, min)`):** return the
-  **largest integer font size in `[min, cap]`** such that the text — laid out at `width=innerW`,
-  `wrap:"word"` — has **wrapped height ≤ innerH**. Implementation is engineer judgment (decrement from
-  `cap`, or binary search) but MUST be **bounded by `(cap - min)` iterations** and operate on the
-  already-length-capped text, so it cannot hang. If even `min` overflows `innerH`, use `min` (the group
-  `clip` contains the overflow). Module constants: **`TEXT_AUTOFIT_MAX = 48`** (the cap) and
-  **`TEXT_AUTOFIT_MIN = 6`** (floor) — defined alongside the existing `RENDER_*` constants
+  **largest integer font size in `[min, cap]`** such that the text — laid out at `width=innerW` (the
+  **clamped** inset), `wrap:"word"` — has **wrapped height ≤ innerH**. Implementation is engineer
+  judgment (decrement from `cap`, or binary search) but MUST be **bounded by `(cap - min)` iterations**
+  and operate on the already-length-capped text, so it cannot hang. If even `min` overflows `innerH`,
+  use `min` (the group `clip` contains the overflow). Module constants: **`TEXT_AUTOFIT_MAX = 48`** (the
+  cap) and **`TEXT_AUTOFIT_MIN = 6`** (floor) — defined alongside the existing `RENDER_*` constants
   (`editor.js:113-114`).
+- **Font determinism caveat (record explicitly):** recompute-on-render keeps the **model** round-trip
+  byte-identical (geometry+text only — STORY-fe-001 §Decision), but the **rendered** wrap/line-count is
+  a function of the canvas font metrics. Pinning an explicit `fontFamily` (above) maximizes stability,
+  but **cross-font-environment pixel/line identity is NOT guaranteed** — only **model-byte identity** is.
+  `w2-screenshot-gallery` re-opens arbitrary models possibly in a different browser/OS/font environment;
+  it must rely on the model bytes, not on pixel-identical re-render. (Contrarian Finding 2.)
 - **Determinism:** the fit is recomputed on **every** `render()` pass purely from
   `{width, height, text, cap}` + Konva's (frozen) canvas measurement — nothing is stored on the item
   (STORY-fe-001 §Decision). `render()` already `destroyChildren()`s and rebuilds nodes each pass
@@ -145,6 +167,15 @@ handlers. **Select/move/resize via the shared transformer + re-fit on resize is 
       multi-megabyte text renders **without throwing or emitting a console error** — the bad item is
       skipped, text is bounded by `RENDER_TEXT_CAP`, the fit loop is bounded (no hang), and a sibling
       well-formed text box renders normally. `deserializeModel` stays opaque (unchanged).
+- [ ] **Thin-box inset clamp (no throw / no hang):** a thin-but-valid text box accepted by the draw
+      guard but smaller than the inset (`item.width` or `item.height` in the `(4, 2*PAD)` range, e.g.
+      8×200) renders **without throwing, hanging, or emitting a console error** — `innerW`/`innerH` are
+      clamped to `≥1` and the degenerate case short-circuits to `TEXT_AUTOFIT_MIN` + Group `clip` rather
+      than feeding a non-positive width into the fit loop.
+- [ ] **Font pinned + round-trip contract is model-byte (not pixel) identity:** the `Konva.Text` carries
+      an explicit web-safe `fontFamily` (not Konva's default); the documented round-trip guarantee is
+      `deepEquals(model.items)` (model-byte identity), with cross-font-environment pixel/line identity
+      explicitly **not** guaranteed (recorded for the `w2-screenshot-gallery` hand-off).
 - [ ] Single-click selects (sets `selectedId`) and double-click opens the box-aware editor with the
       existing text pre-filled (interaction model preserved); the lossy projection for the text item is
       still `{id,type:"text",x:round(x),y:round(y),text}`.
@@ -174,6 +205,11 @@ animations/transitions, so there is no reduced-motion-affected motion. Consisten
   `{type:"text", x:NaN, width:"200", height:Infinity, text:<multi-MB>}` plus one well-formed text box →
   `render()` completes, no thrown exception, no console error; the well-formed box renders, the hostile
   item is skipped; text length bounded by `RENDER_TEXT_CAP`.
+- `thin sub-2*PAD text box renders without throw/hang/clips` — draw (or ANNOTATE) a finite thin box
+  (e.g. `width:8, height:200`, accepted by the `>4` draw guard) with a long string → `render()`
+  completes promptly (no hang), no thrown exception, no console error; the box clips to its bounds at
+  `TEXT_AUTOFIT_MIN` (the negative-inset path is closed by the clamp + short-circuit). _[Concern 1 — the
+  finite small box the `NaN`/`Infinity`/`"200"` hostile-item case does NOT exercise.]_
 
 ## Dependencies
 
@@ -234,3 +270,37 @@ web-safe `fontFamily` (e.g. a fixed `sans-serif` stack) on the text node so meas
 the platform allows, and record in the story that pixel-identical re-render across font environments is
 **not** guaranteed (only model-byte identity is). Prevents a future consumer from assuming cross-machine
 visual identity the design does not provide.
+
+## Revisions
+
+### 2026-06-19 — product-owner arbitration (Phase 6)
+
+**Finding 1 (concern — negative fit-inset on thin boxes): RESOLVED by revision.** This was the
+highest-risk contrarian finding and a real availability gap, not a nitpick: the `>4` draw guard
+(fe-001) admits a finite thin box (e.g. 8×200) whose raw inset `width − 2*PAD` is ≤ 0, and the
+render-time geometry guard (`width<=0`) does not catch a positive `width:8`, so a non-positive width
+reaches the fit loop — the one path the contrarian could not prove stays cheap. The feature's
+load-bearing "auto-fit must not throw or hang" contract is depended on by `w2-screenshot-gallery`
+(re-opens arbitrary stored models through this exact path), and the existing hostile-item E2E
+(`NaN`/`Infinity`/`"200"`) does NOT exercise a finite small width. **Decision: REVISE (not accept).**
+Required **both** the inset clamp (`innerW/innerH = Math.max(1, dim − 2*PAD)`) **and** the degenerate
+short-circuit (`dim < 2*PAD` ⇒ `TEXT_AUTOFIT_MIN` + Group `clip`, skip the loop) — clamp closes the
+*unspecified*-behavior risk, short-circuit closes the *expensive*-measurement risk; together they
+guarantee bounded+cheap on any finite thin box. Added a dedicated browser-tester E2E case
+(`thin sub-2*PAD text box renders without throw/hang/clips`) so the gap is no longer invisible to the
+suite. Fix lives entirely in this story's new fit helper (scope-clean — no change to `editor-model.js`,
+the draw threshold, or released code). Draw threshold deliberately **kept at `>4`** (per fe-001 Finding
+2): raising it to `2*PAD` would silently reject legitimately small boxes — the clamp is the right home.
+
+**Finding 2 (info — font-environment-dependent rendered wrap): FOLDED IN (mitigate).** Recompute-on-render
+keeps the *model* round-trip byte-identical (the right call), but the *rendered* line-count depends on
+canvas font metrics, and `w2-screenshot-gallery` may re-open models in a different font environment.
+**Decision: pin an explicit web-safe `fontFamily`** on the `Konva.Text` (was inheriting Konva's default)
+to maximize measurement stability, and **record explicitly** that the round-trip guarantee is
+**model-byte identity** (`deepEquals(model.items)`), NOT cross-environment pixel/line identity. Added a
+validate item; the w2 hand-off contract now states this in writing so a future consumer cannot assume
+cross-machine visual identity the design does not provide.
+
+Status promoted pending → approved. No cross-domain conflict (be/db/do sentinels verified correct);
+both revisions are within this FE story's owned code. FE-architect notified of the exact clamp/font
+wording for confirmation; revisions stand absent an implementation-blocker flag.

@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: database-engineer
 author_architect: database-architect
 effort: 1
-status: pending
+status: approved
 sentinel: true
 depends_on: []
 diff_estimate: none
@@ -155,3 +155,14 @@ opaque in model blob").
 
 - 2026-06-19 — created by database-architect (effort=1, sentinel, depends on none;
   BE+FE sentinel-confirmed via 4 peer messages)
+
+## Revisions
+
+### 2026-06-19 — product-owner arbitration (Phase 6)
+
+Sentinel **verified correct and accepted** — the contrarian pass independently confirmed there is no
+server-side DB and that the new text-item fields are a structured-clone *value-shape* addition inside the
+already-persisted `screenshots[].model` blob (no `kv` store/index change, no `db.version` bump, no
+`report` record-shape change, projection byte-frozen). BE+FE peer confirmation is recorded in
+`conversations/`. No PO change required — this sentinel already carried a proper `## How we validate`
+checklist (4 items). Status promoted pending → approved.

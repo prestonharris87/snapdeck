@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: [STORY-fe-001, STORY-fe-002]
 created_at: 2026-06-19T15:30:00Z
 last_run_id: run-20260619-150554-36418
@@ -61,9 +61,24 @@ This closes the feature.
   so `attachBoxTransformer`'s `node.width() * node.scaleX()` write-back is well-defined. Exactly **one**
   shared `Konva.Transformer` (`editor.js:52-53`, `rotateEnabled:false`) is ever attached; it lives on
   `selectLayer` so it survives `annLayer.destroyChildren()` (`editor.js:98`).
-- **Move:** `attachBoxTransformer` sets `node.draggable(true)` and a `dragend` that writes
-  `item.x,item.y` + `snapshot()` (`editor.js:69`) — body-drag moves the box, undoable. (No bespoke
-  dragend in `renderText`.)
+- **Draggable gate (REQUIRED — Concern resolution, see Revisions):** the text Group's creation-time
+  `draggable` flag (set in `renderText`, fe-002) MUST be gated `tool === "select" && selectedId ===
+  item.id` — **not** the looser `tool === "select"`. Rationale: under the loose gate an **unselected**
+  box is draggable, so a body-`mousedown` drags the Konva node and suppresses the trailing `click` →
+  no selection AND no `dragend` (the geometry write-back lives only in `attachBoxTransformer`, attached
+  only when selected) → the move silently reverts on the next `render()`, including the `render()`
+  inside `finish()` before serialize, so it can vanish from the saved screenshot. With the tighter gate,
+  an unselected box is not draggable → `mousedown` fires `click` → it selects (transformer attaches,
+  node becomes draggable) → a second drag moves it with the helper's `dragend` write-back. Standard
+  "click-to-select, then drag." `attachBoxTransformer` is **untouched** (still frozen — it calls
+  `node.draggable(true)` on the now-selected node). This corrected gate is the **documented shared
+  select/move contract** that `w2-rectangle-tool` adopts. **Scope note:** released `renderBox`'s legacy
+  `draggable: tool==="select"` is **left unchanged** (changing it would break fe-001's "box tool behaves
+  exactly as before" no-regression AC + alter a released contract under a text-box feature); aligning
+  `renderBox` is a recommended **separate** follow-up, not folded here.
+- **Move:** once selected, `attachBoxTransformer` sets `node.draggable(true)` and a `dragend` that
+  writes `item.x,item.y` + `snapshot()` (`editor.js:69`) — body-drag moves the box, undoable. (No
+  bespoke dragend in `renderText`.)
 - **Resize → re-fit (automatic, no new code):** on `transformend` the helper bakes
   `scaleX/scaleY → width/height` (`Math.max(1, …)`), resets scale to 1, then `snapshot(); render()`
   (`editor.js:61-68`). `render()` rebuilds the text Group at the new geometry and **re-runs the bounded
@@ -112,11 +127,20 @@ This closes the feature.
   required code change — **re-fit on resize is automatic** (recompute-on-render; fe-002), and **re-edit**
   is already wired (fe-001/fe-002). Do **not** add a re-fit hook, a second transformer, or a bespoke
   transformend/dragend in `renderText`.
-- Ensure the attached node (the Group) exposes `width()/height()` (set explicitly in fe-002) so the
-  helper's scale→geometry bake is correct; if the Group's intrinsic size is not honored by the helper's
-  math during testing, attach to the background Rect instead and keep the Text synced on render — but
-  **prefer the Group** so move/resize affect text+box as one unit. (Engineer judgment; the contract is
-  "one shared `attachBoxTransformer`, geometry written back, snapshot committed".)
+- **Attach the `Konva.Group` (the contract, not just "preferred").** The Group exposes explicit
+  `width()/height()` (set in fe-002) so the helper's `node.width()*node.scaleX()` bake (`editor.js:64-65`)
+  is well-defined, and move/resize affect **text + box as one unit**. The Rect-only fallback is allowed
+  **only** if the Group path hits a real blocker AND the Text is made a **child of the transformed node**
+  (or `listening:false` and re-synced on render) so the move-as-one-unit invariant + click/transform
+  hit-testing still hold — and that fallback must be **flagged to the PO** (it changes behavior the ACs
+  assume). Do not silently ship the sibling-Rect fallback (Text lagging the Rect on drag / glyphs snapping
+  on `transformend` / click-shadowing are the un-analyzed behaviors that path introduces — contrarian
+  Finding 2). (Engineer judgment is limited to the fit-loop internals, not the attach topology.)
+- **Mid-drag glyph distortion is EXPECTED, not a defect.** A non-uniform corner resize scales the Group
+  via `scaleX/scaleY`, so the black glyphs visibly stretch/squash **during** the drag and snap to the
+  crisp re-fit only on `transformend` release (the live transform is Konva's built-in preview). The
+  resize E2E note + the browser-tester must treat this mid-drag distortion as expected so it is not filed
+  as a false-positive rendering defect (contrarian Finding 2).
 - **Round-trip is verification-only** (no code): the text item `{x,y,width,height,text}` already
   serializes/deserializes opaquely via the released w0 pure module; re-render re-fits identically. Drive
   the through-the-editor round-trip in the E2E lane.
@@ -137,8 +161,15 @@ This closes the feature.
       `TEXT_AUTOFIT_MIN`, then clips). The font/line change happens via `render()` re-fit, not a stored value.
 - [ ] **Undo** after a resize restores the prior `{x,y,width,height}` **and** the prior fit/wrap (the
       resize committed one `snapshot()`).
-- [ ] **Double-click** re-opens the box-aware editor pre-filled with the existing text; committing changes
-      only `text` and leaves `{x,y,width,height}` unchanged (geometry-preserving re-edit, undoable).
+- [ ] **Double-click** re-opens the box-aware editor pre-filled with the existing text; committing
+      **non-empty** text changes only `text` and leaves `{x,y,width,height}` unchanged
+      (geometry-preserving re-edit, undoable). Committing **empty** text on re-edit **removes the whole
+      committed box** (geometry + all), consistent with the create-flow empty-removal and undoable — this
+      is intended, NOT a regression (see Revisions / fe-001 Finding 1).
+- [ ] **Unselected body-drag does not lose the move:** in select mode, an unselected text box's
+      `mousedown` **selects** it (does not drag); a drag of the now-selected box writes `{x,y}` back via
+      the helper's `dragend`. A move survives a subsequent `render()` / `finish()` (no silent revert).
+      The text Group's `draggable` is gated `tool==="select" && selectedId===item.id`.
 - [ ] **Lossless round-trip:** store the Done payload's `model` at `screenshots[].model`, re-send via
       `ANNOTATE {image, model}`, Done again → `done2.model.items` `deepEquals` `done1.model.items`
       (text item `{x,y,width,height,text}` survives verbatim); the reloaded box reconstructs the same
@@ -166,9 +197,14 @@ Consistent with feature.md `Motion E2E: n/a`.
 - `select attaches exactly one shared transformer (rotateEnabled:false)` — single-click a text box shows
   handles; clicking empty canvas / Escape detaches it; never two transformers.
 - `resize re-fits font + re-flows wrap and is undoable` — enlarge via a corner handle → `{x,y,width,height}`
-  updated, line count drops / font grows ≤ cap; Undo restores prior geometry + fit.
+  updated, line count drops / font grows ≤ cap; Undo restores prior geometry + fit. **Note:** mid-drag
+  glyph stretch/squash before the on-release re-fit is EXPECTED (Konva's live Group scale), not a defect.
 - `double-click re-edits, single-click only selects` — single-click selects (no textarea); double-click
-  opens the pre-filled editor; re-commit preserves geometry, changes only text.
+  opens the pre-filled editor; re-commit of NON-EMPTY text preserves geometry, changes only text;
+  re-commit of EMPTY text removes the committed box (intended, undoable — not a regression).
+- `unselected body-drag does not lose the move` — in select mode, mousedown-drag a NOT-yet-selected box;
+  assert it selects (rather than performing a non-written-back drag), and that a move of the selected box
+  survives a subsequent render()/Done (geometry persisted, not silently reverted).
 - `text box round-trips losslessly through persist→reload` — `done2.model.items deepEquals done1.model.items`;
   the lossy projection stays `{id,type:"text",x,y,text}`.
 
@@ -231,3 +267,42 @@ preview") — a tester unaware of this may file the mid-drag distortion as a ren
 the Text be a child of the transformed node (or `listening:false` and resynced on render) so move/resize
 affect text+box as one unit. Add a one-line note to the resize E2E that mid-drag glyph distortion before
 the on-release re-fit is expected, not a defect.
+
+## Revisions
+
+### 2026-06-19 — product-owner arbitration (Phase 6)
+
+**Finding 1 (concern — unselected body-drag silently loses the move): RESOLVED by revision, scoped
+carefully.** The data-loss is real and this story explicitly promotes the select/move/resize path to the
+"one shared mechanism" `w2-rectangle-tool` reuses, so the latent quirk would be enshrined for three
+shapes. **Decision: FIX on the NEW text path** — gate the text Group's creation-time `draggable` flag
+`tool === "select" && selectedId === item.id` so an unselected box's mousedown selects (via `click`)
+instead of performing a non-written-back drag; the now-selected box drags with `attachBoxTransformer`'s
+`dragend` write-back. `attachBoxTransformer` stays frozen (untouched). I **diverged from the contrarian's
+"fix once in the shared path" wording** after finding a contradiction: applying the gate to a shared
+helper that released `renderBox` also uses would change released box-drag behavior and **break fe-001's
+"box tool behaves exactly as before" no-regression AC**. So the corrected gate is applied to the text
+path only and **documented as the shared contract `w2-rectangle-tool` adopts** (w2 follows the text
+pattern, not legacy `renderBox`). Aligning released `renderBox` is recommended as a **separate**
+follow-up — not folded into a text-box feature. This is a conscious fix, not an Acknowledged Risk: the
+data-loss is eliminated everywhere this feature owns code (text), and the contract w2 inherits is the
+correct one. Added an E2E case asserting an unselected-box drag does not lose the move.
+
+**Finding 2 (info — Group-vs-Rect attach fallback + mid-drag glyph distortion): FOLDED IN.** Promoted
+the Group attach from "preferred" to the **contract** (text+box move/resize as one unit; the
+well-defined `width()*scaleX()` bake). The Rect-only fallback is now allowed only if the Group path hits
+a real blocker AND the Text is a child of the transformed node (or `listening:false`+resync), and must
+be **flagged to the PO** — closing the un-analyzed sibling-Rect lag/hit-shadow behavior. Recorded that
+mid-drag glyph stretch/squash (Konva's live Group scale before the on-release re-fit) is **expected**,
+with an E2E note so the browser-tester does not file a false-positive rendering defect.
+
+**fe-001 Finding 1 cross-reference (info — re-edit→empty deletes the committed box): ACCEPTED as
+intended; AC wording fixed here + in fe-001 + feature.md.** Re-edit→empty removing the whole box is the
+intended behavior (consistent with the locked create-flow empty-removal; undoable; a Snapdeck text box
+carries only text, so an emptied box has no annotation value — Google-Slides retention parity rejected).
+The contrarian correctly caught that the AC framing "only `text` changes" silently failed on the empty
+path; clarified the re-edit AC to distinguish non-empty (geometry preserved) vs empty (box removed) and
+added the E2E note so the empty-delete is not filed as a regression.
+
+Status promoted pending → approved. FE-architect notified of the draggable-gate scoping decision for
+confirmation; revisions stand absent an implementation-blocker flag.

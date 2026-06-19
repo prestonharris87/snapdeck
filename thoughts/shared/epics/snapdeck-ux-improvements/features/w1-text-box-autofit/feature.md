@@ -96,11 +96,15 @@ auto-fit + wrap).
 - [ ] **Resize re-fit:** resizing re-fits the font **within the cap** and re-flows the wrap, writes the
       new `{x,y,width,height}` back to the `model` item, and commits a `snapshot()` (undoable).
 - [ ] **Re-edit:** double-clicking a committed text box re-opens it for editing with the existing text
-      pre-filled; single-click only selects (does **not** open the editor). Re-committing preserves the
-      box geometry (only `text` changes).
+      pre-filled; single-click only selects (does **not** open the editor). Re-committing **non-empty**
+      text preserves the box geometry (only `text` changes); re-committing **empty** text removes the box
+      (consistent with the create-flow empty-removal; undoable) — intended, not a regression.
 - [ ] **Lossless round-trip:** `model → persist → load → model` is **identity** for the text item —
-      geometry, wrapping, and content survive verbatim; the box hydrates via the foundation's
-      `deserializeModel` opaque pass-through and renders through the guarded render boundary.
+      geometry and content survive verbatim (`deepEquals(model.items)`); the box hydrates via the
+      foundation's `deserializeModel` opaque pass-through and renders through the guarded render boundary.
+      The guarantee is **model-byte identity**; the rendered wrap re-fits deterministically on reload
+      within the same font environment (an explicit `fontFamily` is pinned for stability), but
+      cross-font-environment pixel/line identity is **not** guaranteed — only the model bytes are.
 - [ ] The lossy `annotations` projection for text remains the **byte-frozen** `{ id, type:"text",
       x:round(x), y:round(y), text }` shape — `width`/`height`/fit fields are **model-only** and never
       appear in the projection or the upstream `/report/save` payload. **`projectAnnotations` is not
@@ -229,9 +233,12 @@ in-progress report store, re-sent into a fresh editor via `ANNOTATE { image, mod
 immediately committed with ✓ Done — call the second payload `done2` (no page reload / no re-login: the
 store is the extension's own service-worker store, which is not auth-gated)
 **Then** **`done2.model.items` `deepEquals` `done1.model.items`** — the text item's `{x,y,width,height,
-text}` (and any fit fields the architect persists) survive verbatim with zero geometry/content drift, so
-`model → persist → load → model` is identity and the wrapped box reconstructs with the **same line count
-and font** on reload; **and** the lossy projection entry for that text item is **exactly**
+text}` (geometry + text only; no fit field is stored — fit is recomputed on render) survive verbatim with
+zero geometry/content drift, so `model → persist → load → model` is identity (`deepEquals` on
+`model.items`) and the wrapped box re-fits deterministically to the **same line count and font** on
+reload **within the same font environment** (an explicit `fontFamily` is pinned; cross-environment
+pixel-identity is not guaranteed — only model-byte identity is); **and** the lossy projection entry for
+that text item is **exactly**
 `{ id, type:"text", x:round(x), y:round(y), text }` — `Object.keys(...).sort()` equals
 `["id","text","type","x","y"]`, with **no** `width`/`height`/fit key leaked — **and** the subsequent
 `/report/save` body carries no `model` field on `screenshots[]` (upstream payload byte-identical to
@@ -285,7 +292,15 @@ call).
 
 ## Stories (populated by architects)
 
-- (none yet — architects populate during Phase 5)
+All `approved` after PO arbitration 2026-06-19 (see `conversations/0018-product-owner-arbitration-decision.md`).
+Implement order follows the FE chain; sentinels are no-work.
+
+- [ ] STORY-fe-001 — Drag-to-draw text-box tool: box-geometry model item + authoring (frontend-engineer) · depends_on: []
+- [ ] STORY-fe-002 — Auto-fit wrap render + white/red/black visual + render guard (frontend-engineer) · depends_on: [STORY-fe-001]
+- [ ] STORY-fe-003 — Text-box select/move/resize via shared transformer + re-fit (frontend-engineer) · depends_on: [STORY-fe-001, STORY-fe-002]
+- [ ] STORY-be-001 — Sentinel: no backend changes (backend; opaque model persistence already covers it) · depends_on: []
+- [ ] STORY-db-001 — Sentinel: no database changes (database; fields ride opaque in model blob) · depends_on: []
+- [ ] STORY-do-001 — Sentinel: no devops changes (devops; rework stays in registered editor.js) · depends_on: []
 
 ## Defects (populated as found)
 

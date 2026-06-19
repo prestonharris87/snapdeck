@@ -241,8 +241,8 @@ test('onCommand_localhostTab_completedAnnotate_setsSuccessBadge', async () => {
 
   assert.ok(badgeTextCalls.includes('✓'), 'success "✓" badge text must be set');
   assert.ok(badgeBgColorCalls.includes('#1E8E3E'), 'success badge color must be green #1E8E3E');
-  assert.ok(_kv['report'], 'report must be written to IndexedDB');
-  assert.strictEqual(_kv['report'].screenshots.length, 1, 'exactly one screenshot must be appended');
+  assert.ok(_kv['report:3000'], 'report must be written to IndexedDB under report:3000');
+  assert.strictEqual(_kv['report:3000'].screenshots.length, 1, 'exactly one screenshot must be appended');
 });
 
 /**
@@ -264,8 +264,8 @@ test('onCommand_cancelledAnnotate_leavesBadgeNeutral', async () => {
     [],
     'only the neutral reset ("") badge text is expected; no error or success text'
   );
-  // No screenshots stored
-  const report = _kv['report'];
+  // No screenshots stored (key is report:3000 for LOCALHOST_TAB at :3000)
+  const report = _kv['report:3000'];
   assert.ok(
     !report || report.screenshots.length === 0,
     'report must remain unchanged (no screenshots) on cancel'
@@ -316,8 +316,8 @@ test('onCommand_reentrantPress_ignoredWhileInFlight', async () => {
   await settle();
 
   assert.strictEqual(captureVisibleTabCallCount, 1, 'captureVisibleTab must be called exactly once (re-entrancy guard)');
-  assert.ok(_kv['report'], 'report must be written');
-  assert.strictEqual(_kv['report'].screenshots.length, 1, 'exactly one screenshot appended (no double-write)');
+  assert.ok(_kv['report:3000'], 'report must be written under report:3000');
+  assert.strictEqual(_kv['report:3000'].screenshots.length, 1, 'exactly one screenshot appended (no double-write)');
 });
 
 /**

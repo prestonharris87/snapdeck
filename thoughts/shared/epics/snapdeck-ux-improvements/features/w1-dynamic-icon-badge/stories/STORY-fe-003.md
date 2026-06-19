@@ -41,11 +41,13 @@ capture/save:
    via the popup `ADD_SCREENSHOT` path OR the released `w0-keyboard-shortcuts`
    `runCaptureCommand()` path — the active tab's **orange** badge count updates live,
    with no tab switch; and on save/clear the icon returns to **green** (AC6).
-2. **Transient-flash reconcile (AC11):** the released `runCaptureCommand()` drives the
-   GLOBAL `action` badge with transient `✓`/`!` flashes. The per-`tabId` steady state
-   must coexist so there is no stuck `✓`/`!`, no flicker, and the correct steady state
-   re-asserts after the flash — using ONLY the per-`tabId` `action` calls this feature
-   owns, with **no edit to `runCaptureCommand()`** or any released seam.
+2. **Transient-flash reconcile (AC11) — kb-side fix, no fe-003 seam (option (c)):** the
+   `defect-badge-flash-shadow` resolution (BOSS-ruled SOLVE, option **(c)**, kb-owned) makes
+   `runCaptureCommand()` flash `✓`/`!` per-`tabId` (not global) and drop the destructive
+   global pre-clear, so the flash is no longer shadowed by this feature's per-tab count badge.
+   fe-003 keeps its EXISTING reconcile (the `reportCountChanged` `onChanged` branch + the wake
+   re-derive) and adds NO seam/handback. No edit to released kb code. ⚠️ See `## Cross-team
+   item` for a flagged AC5-keyboard residual in kb's shipped self-clear.
 
 Both reduce to: **re-derive + repaint the active tab (fe-002's `refreshActiveTab`)
 at the moment a capture/save changes the count.** The *signal* for that moment is the
@@ -54,31 +56,34 @@ locked `reportCountChanged` tick — the w0 producer is already merged/frozen (c
 
 ## What it should look like
 
-### Part 2 — Reconcile (FINAL; no ruling needed)
+### Part 2 — Reconcile (steady-state via the existing wake path — no seam, option (c))
 
-Chrome resolves the badge per tab: **a tab-specific badge value takes precedence over
-the global (no-`tabId`) badge** for that tab. fe-003 leans on this:
+The badge-flash shadow is **SOLVED kb-side** by the `defect-badge-flash-shadow` resolution
+(BOSS-ruled SOLVE, option **(c)**, lands the same Wave-1 PR): `runCaptureCommand()` flashes
+`✓`/`!` on the **active tab's `{tabId}`** (no longer the GLOBAL badge) and **drops the
+destructive global pre-clear**, so the flash is no longer shadowed by this feature's per-tab
+count badge. fe-003 keeps its EXISTING reconcile — the `reportCountChanged` `onChanged` branch
+(Part 1) + the wake re-derive (`onActivated`/`onUpdated`/cold-start) — and adds **NO seam /
+handback** (no `globalThis` fn, no `flashCleared` branch).
 
-- **No stuck `✓`/`!`:** this feature NEVER writes a tab-specific `✓`/`!`. The released
-  `setTimeout` (`background.js:135-138/145-148/152-155`) clears the GLOBAL flash on its
-  own. So nothing of ours can get stuck, and the global flash self-clears. ✔ minimal AC11.
-- **Orange tab:** the tab-specific count (`String(count)`, orange bg) supersedes the
-  global flash on that tab. The count IS the success signal, so the redundant `✓` being
-  masked is intended. After the flash clears globally, the tab still shows its
-  orange count (tab-scoped state persists). ✔ steady-state-after-flash.
-- **Green / gray tab — refine fe-002's badge-clear so the released flash stays visible
-  then settles:** clear the tab badge with `chrome.action.setBadgeText({ tabId, text: null })`
-  (removes the tab override → the tab falls back to the GLOBAL badge: empty normally,
-  `✓`/`!` during a flash) rather than `text: ""` (a hard per-tab mask). Net on a green
-  tab: the released `✓`/`!` flashes through, then the global reset returns it to empty —
-  preserving the released kb feedback on not-yet-orange tabs. **Verify this `null`
-  fall-through behavior empirically via browser-tester** (Chrome badge-reset semantics
-  are subtle); the validation asserts the OBSERVED behavior, not the exact arg.
-- **Known limitation (Contrarian 5.5 — accepted risk):** on an ORANGE tab, the released
-  global `!` *error* flash (and its global `setTitle`) are masked by the tab-specific
-  count/title. Surfacing per-tab capture **errors** would require editing released code
-  (the Option-A defect could optionally also emit a failure tick) or a separate
-  notification surface (out of scope). Documented, not solved here.
+- **No stuck `✓`/`!` (AC11):** kb's flash is per-`tabId` and self-clears on its own
+  `setTimeout`; this feature never writes a tab-specific `✓`/`!`, so nothing of ours sticks.
+- **Flash visible on orange tabs (shadow gone):** kb's per-`tabId` flash + dropped global
+  pre-clear means the `✓`/`!` shows on the active tab even when it carries an orange count —
+  no longer masked.
+- **Green / gray steady state is painted EXPLICITLY per-`tabId`** — `applyIconState` (fe-001)
+  sets `setBadgeText({ tabId, text: "" })` for green/gray and `{ tabId, text: String(count) }`
+  for orange; every steady state writes its OWN tab-scoped badge and does NOT rely on kb's
+  (now-dropped) global badge. (The `text:null` global-fall-through idea is obsolete and removed.)
+- **Residual after kb's flash self-clears:** kb's teardown clears its flash to empty on
+  `{tabId}`; dynamic-icon re-asserts the steady state on its next wake-reconcile. **⚠️ Scope
+  caveat (flagged to team-lead — see `## Cross-team item`):** kb's shipped `clearFlash`
+  (`background.js:131-139`, via `scheduleFlashClear` :166-174) is UNCONDITIONAL
+  (`setBadgeText({tabId, text:""})`), so on the keyboard **success** path it blanks the
+  `reportCountChanged`-painted count at teardown too — not just the error path — leaving the
+  badge empty until the next wake. That conflicts with AC5 + the "live increment on the
+  keyboard-shortcut path" / "steady-state-after-flash" E2Es; the clean fix is a **guarded**
+  kb self-clear (clear only if the badge still shows kb's own `✓`/`!`), a kb-side tweak.
 
 ### Part 1 — Live-count trigger
 
@@ -99,13 +104,15 @@ the global (no-`tabId`) badge** for that tab. fe-003 leans on this:
   (BOSS-ratified + verified on disk 2026-06-19 — final; no further mechanism churn.)
 - **This FE story (consumer):** a NEW top-level listener
   `chrome.storage?.session?.onChanged?.addListener?.((changes) => { … })` (double
-  optional-chain for frozen-mock tolerance — the released suites stub no `storage`). The
-  body MUST **strictly key-filter**: act ONLY on `changes.reportCountChanged` and ignore
-  every other key — critically fe-002's own `resolve:<port>` cache writes, which also land
-  in `chrome.storage.session`. Without this filter the listener self-triggers on every
-  cache write (BOSS-flagged loop / wrong re-derive). `chrome.storage.session.onChanged` is
-  already session-area-scoped, so no areaName check is needed. Read the carried
-  `{ port, count } = changes.reportCountChanged.newValue`.
+  optional-chain for frozen-mock tolerance — the released suites stub no `storage`). The body
+  MUST **strictly key-filter**: act ONLY on `changes.reportCountChanged` and ignore every
+  other key — critically fe-002's own `resolve:<port>` cache writes (also in
+  `chrome.storage.session`), else it self-triggers on every cache write (BOSS-flagged loop).
+  `chrome.storage.session.onChanged` is already session-area-scoped, so no areaName check. On
+  `changes.reportCountChanged` → `void refreshActiveTab()` (re-derives the active tab from the
+  SSOT). Carried `{ port, count } = changes.reportCountChanged.newValue` is a signal only.
+  **Option (c): NO `flashCleared` branch** — kb writes no `flashCleared` under (c), so such a
+  branch would be dead code.
 - **Why it satisfies AC5/AC6/AC11:** on a `reportCountChanged` tick, re-derive + repaint
   the ACTIVE tab via `refreshActiveTab()` (fe-002) — it re-reads the count from IndexedDB
   via the `getReport` SSOT and applies orange `N` (count>0) or green (count==0, the
@@ -113,10 +120,10 @@ the global (no-`tabId`) badge** for that tab. fe-003 leans on this:
   the active tab's port, so the active-tab re-derive covers the dominant case. The carried
   `newValue.{port,count}` is available for an OPTIONAL best-effort multi-window pass
   (repaint other tabs whose resolved port === `newValue.port`); deferred as best-effort per
-  scope (those tabs otherwise repaint on their next `onActivated`). On the kb path the tick
-  fires inside `addScreenshot` *before* `runCaptureCommand` sets the global `✓`, so the tab
-  settles to its per-tab steady state (masking the redundant `✓`) and persists after the
-  global reset → steady-state-after-flash.
+  scope (those tabs otherwise repaint on their next `onActivated`). On the kb path the
+  `reportCountChanged` tick lands orange `N+1`; after kb's per-`tabId` flash self-clears the
+  steady state re-asserts on the next wake-reconcile (Part 2 + `## Cross-team item` — note the
+  flagged AC5-keyboard residual where kb's UNCONDITIONAL self-clear blanks the count).
 - `storage.onChanged` fires in the originating SW context, so the same worker that wrote
   the tick repaints. No new permission (`storage.session` already granted).
 - **🔒 DESIGN REQUIREMENT (BOSS-elevated) — the tick is a repaint nudge, NEVER source of
@@ -164,24 +171,29 @@ lagging until the next tab event). Do not implement unless Option A is reversed.
 - **No-regression assertion:** fe-003's OWN diff does NOT edit `runCaptureCommand`,
   `addScreenshot`, `saveReport`, the `CLEAR_REPORT` handler, `emitReportCountChanged`, or
   the released `onMessage` listener — all released w0/kb seams stay byte-identical. (The
-  `reportCountChanged` emit is the already-merged w0 producer at commit `6512a12`, outside
-  this FE story's diff.) fe-003 adds only a new `storage.session.onChanged` consumer and
-  refines fe-002's green/gray badge-clear arg. No second `onMessage` listener is added
-  (harness-safety, above).
-- **Explicitly changing:** ADD `chrome.storage.session.onChanged` consumer →
-  `refreshActiveTab`; refine green/gray clear to `setBadgeText({tabId, text:null})` for
-  flash fall-through.
+  `reportCountChanged` emit is the already-merged w0 producer at commit `6512a12`; the kb
+  per-`tabId` flash + global-pre-clear drop are the kb-owned `defect-badge-flash-shadow`
+  change, option (c) — both outside this FE story's diff.) fe-003 adds only the
+  `storage.session.onChanged` consumer (single `reportCountChanged` branch) and the guarded
+  cold-start re-derive. No `flashCleared` branch, no second `onMessage` listener, no
+  `globalThis` function, no new top-level `chrome.*` (harness-safety).
+- **Explicitly changing:** ADD the `chrome.storage.session.onChanged` consumer (single
+  key-filtered `reportCountChanged` branch → `refreshActiveTab`) plus the guarded SW
+  cold-start re-derive. Green/gray steady state remains a clean tab-specific empty badge
+  painted explicitly by `applyIconState` (NO `text:null` fall-through — kb no longer uses the
+  global badge under the `defect-badge-flash-shadow` (c) resolution).
 - **Verified:** 2026-06-19 (read `background.js`, `popup/popup.js`, `background.reports.test.mjs`).
 
 ## How we're doing it
 
-- Edit only `extension/background.js` (new `onChanged` consumer + green/gray clear
-  refinement) and `extension/background.icon-badge.test.mjs` (add fe-003 cases). No
-  manifest/permission/asset change.
+- Edit only `extension/background.js` (the `onChanged` consumer with the single
+  `reportCountChanged` branch + guarded cold-start re-derive) and
+  `extension/background.icon-badge.test.mjs` (add fe-003 cases). No manifest/permission/asset
+  change.
 - **Released-code boundary (AC11):** do NOT modify `runCaptureCommand()`,
-  `emitReportCountChanged`, or any released seam in THIS story. The `reportCountChanged`
-  tick is the already-merged w0 producer (commit `6512a12`) — consume it; never edit
-  released code.
+  `emitReportCountChanged`, or any released seam in THIS story. The `reportCountChanged` tick
+  (w0, commit `6512a12`) and the kb per-`tabId` flash (`defect-badge-flash-shadow`, option
+  (c)) are owned elsewhere — CONSUME the tick; never edit released code.
 - **Defensive registration:** register as
   `chrome.storage?.session?.onChanged?.addListener?.(...)` (double optional-chain) so the
   released sibling suites — whose frozen `chrome` mock stubs NO `storage` at all
@@ -213,11 +225,16 @@ lagging until the next tab event). Do not implement unless Option A is reversed.
       the badge reconciles to the correct count from `GET_STATE` — proving the badge never
       drifts when the lossy tick stream drops an event. (Browser-tester E2E; PO to add the
       matching spec to feature.md — flagged to team-lead.)
-- [ ] (AC11) After a kb `✓` flash resets, the badge is NOT stuck on `✓`/`!`; the active
-      tab shows its correct per-`tabId` steady state (orange `N` after a successful add,
-      green after a cancel), with no flicker.
-- [ ] (AC11) On a GREEN tab, the released `✓`/`!` flash is still visible during its window
-      then settles to empty (verify the `text:null` fall-through empirically).
+- [ ] (AC11) kb's per-`tabId` `✓`/`!` flash is not stuck (kb self-clears its own flash); this
+      feature writes no tab-specific `✓`/`!`; the per-`tabId` steady state re-asserts on the
+      next wake-reconcile.
+- [ ] (shadow SOLVED) On an ORANGE tab, a kb capture's `✓`/`!` IS visible (kb's flash is
+      per-`tabId`, global pre-clear dropped) — no longer masked by the count badge.
+- [ ] (⚠️ AC5-keyboard residual — FLAGGED, kb-side) after a keyboard-shortcut capture, kb's
+      UNCONDITIONAL self-clear (`clearFlash`, bg.js:131-139) blanks the active tab's badge at
+      teardown — on **success** too, not just error — so the count re-appears only on the next
+      wake-reconcile. Conflicts with AC5 + the keyboard-path live-count / steady-state-after-
+      flash E2Es; needs a GUARDED kb self-clear (kb-side). Escalated to team-lead.
 - [ ] fe-003's diff does not touch `runCaptureCommand`/`addScreenshot`/`saveReport`/
       `CLEAR_REPORT`/the released `onMessage` listener (AC11 boundary).
 - [ ] No 2nd `onMessage` listener added; `node --test extension/*.test.mjs` GREEN
@@ -263,9 +280,10 @@ Extend **`extension/background.icon-badge.test.mjs`**. Add a capturing
 
 **Additional supporting cases:**
 
-- `extension/background.icon-badge.test.mjs` — `green_clearUsesNullForFallThrough` —
-  `applyIconState(tabId,{state:'green'})` clears the tab badge with `text:null` (not `''`)
-  so the global flash can fall through (asserts the refined clear arg).
+- (Option (c): NO `flashCleared`/seam unit case — kb writes no `flashCleared`; the post-flash
+  re-assert is covered by the existing `reportCountChanged` + wake-reconcile / `droppedTick`
+  cases above. The flagged AC5-keyboard residual is a kb-side self-clear fix, not an fe-003
+  unit case.)
 - `extension/background.icon-badge.test.mjs` — `noSecondOnMessageListener` — module load
   registers exactly ONE `runtime.onMessage` listener (guards the released-suite
   single-capture harness).
@@ -330,6 +348,31 @@ first serialization. The reconcile half (Part 2) depends only on fe-001/fe-002.
   `{port,count,ts}` — exact match to lock). Dropped the SKELETON/HELD markers; the
   consumer half is now final (consume the existing emit). Ready for Contrarian 5.5 + PO
   arbitration.
+- 2026-06-19 — frontend-architect: badge-flash-shadow contract LOCKED (team-lead relay, seam
+  option a, BOSS+kb). Exposed the chrome-free top-level `__snapdeckReassertActionBadge(tabId)`
+  re-assert seam (error-case complement to the tick; AC10-safe via the active-tab SSOT path)
+  + `reassertSeam_repaintsTabFromGetState` unit case. Rewrote Part 2 to the seam-based
+  reconcile, **resolved the badge-flash shadow as SOLVED** (Cross-team item; supersedes the
+  placeholder + "Known limitation"), removed the now-obsolete `text:null` green/gray
+  fall-through (kb no longer uses the global badge). `moduleLoadsClean` preserved (seam
+  assignment is chrome-free).
+- 2026-06-19 — frontend-architect: badge-flash defect SETTLED as **seam (b)** (team-lead
+  relay, anchored to kb's shipping `flashCleared` write — ends the seam oscillation). Removed
+  the withdrawn seam-(a) `globalThis.__snapdeckReassertActionBadge` + its unit case; ADDED the
+  idempotent `flashCleared` branch on the existing `storage.session.onChanged` listener
+  (re-assert the carried `tabId` from the SSOT; active-tab/AC10-clean) +
+  `flashCleared_reassertsTabFromGetState` unit case; #3 = SOLVED / gap-CLOSED. Kept the
+  `reportCountChanged` branch + wake-reconcile + cold-start. Verified green/gray paint explicit
+  per-`tabId` empty (fe-001 `text:""`), no reliance on kb's dropped global badge.
+  `moduleLoadsClean` preserved (no new top-level `chrome.*`).
+- 2026-06-19 — frontend-architect: badge-flash defect re-SETTLED as **option (c) — NO seam**
+  (team-lead relay, kb SHIPPED (c)). Reverted BOTH seams: removed the `globalThis` fn AND the
+  `flashCleared` `onChanged` branch + their unit cases; fe-003 is back to its pre-saga design
+  (wake-reconcile + single `reportCountChanged` branch). #3 = SOLVED kb-side. **Flagged an
+  AC5-keyboard residual:** kb's shipped `clearFlash` (bg.js:131-139) is UNCONDITIONAL, so it
+  blanks the keyboard-**success** count after the `✓` teardown (not error-only) → conflicts
+  with the keyboard-path live-count + steady-state-after-flash E2Es; recommended a GUARDED kb
+  self-clear (kb-side). Escalated to team-lead; pending reconciliation before STORIES_LOCKED.
 
 ## Contrarian Findings
 
@@ -404,54 +447,29 @@ blind spot is accepted consciously rather than believed away. **PO-accepted.**
 
 Status: pending → approved.
 
-## Deferred Decision — BOSS decides at STORIES_LOCKED (route as kb released-code defect vs accept)
+## Cross-team item — badge-flash shadow (SOLVED kb-side, option (c)) + ⚠️ AC5-keyboard residual FLAGGED
 
-### 2026-06-19 — product-owner (Contrarian Finding 2; team-lead/BOSS-directed)
+### 2026-06-19 — team-lead relay (BOSS-ruled SOLVE, option (c) — NO seam)
 
-**Orange-tab capture errors are silent — the per-`tabId` count badge shadows kb's released
-GLOBAL `!` error flash. This is NOT resolved and NOT accepted here — it is DEFERRED to BOSS at
-STORIES_LOCKED.**
+**SOLVED kb-side (option (c) — no cross-feature seam).** kb makes its `!`/`✓` capture flash
+per-`tabId` + drops the destructive global pre-clear (`defect-badge-flash-shadow`, BOSS-ruled
+SOLVE, lands the same Wave-1 PR) → the flash is no longer shadowed by this feature's orange
+count badge. fe-003 keeps ONLY its existing wake-reconcile + `reportCountChanged` branch (NO
+seam, NO `flashCleared` branch, NO `globalThis` fn). No w2 forward-flag. (Supersedes the prior
+placeholder, the Part-2 "Known limitation", and the withdrawn seam-(a)/seam-(b) approaches.)
 
-**Full interaction (the hidden coupling):**
-- The released `runCaptureCommand()` (grep the symbol in `extension/background.js`; the `!`/`✓`
-  flash block is ~`:140-156` at commit `6512a12` — line cites have drifted, grep by symbol)
-  sets a **GLOBAL** (no-`tabId`) `chrome.action` badge: red `!` (`#C0392B`) + an error
-  `setTitle` on failure, green `✓` (`#1E8E3E`) on success, each on a `setTimeout` reset.
-- Chrome resolves the action badge **per tab**: a tab-specific badge value takes precedence over
-  the global value for that tab. This feature sets a tab-specific orange **count** badge on a
-  report-in-progress (orange) tab.
-- **Consequence:** on an orange tab, the released global `!` error flash (and its global error
-  `setTitle`) are **shadowed** by this feature's tab-specific count badge. A capture **failure**
-  on that tab therefore shows **no `!` signal** — the user's only cue is the count not
-  incrementing. This is a behavior-visible degradation of released `w0-keyboard-shortcuts` error
-  feedback, scoped to tabs already holding ≥1 unsaved screenshot. (The success `✓` being shadowed
-  is benign — the count IS the success signal — only the error case loses its signal.)
-
-**Why it cannot be fixed inside this feature:** fe-003 has no signal that a capture *failed*
-(the w0 `reportCountChanged` tick fires only on a count change, never on failure), and per scope
-directive #4 / AC11 `runCaptureCommand()` is RELEASED `w0-keyboard-shortcuts` code this feature
-must not edit. The only real fixes live OUTSIDE this feature's boundary → a BOSS call.
-
-**Proposed released-code fix (for BOSS to route — NOT an in-feature edit):** have kb's
-`runCaptureCommand()` set its `!`/`✓` flash on the **active tab's `{tabId}`** (and clear it
-per-tab on the `setTimeout` reset) instead of the global no-`tabId` badge. The kb flash then
-becomes itself a tab-specific value and is no longer shadowed by — nor fighting — this feature's
-per-`tabId` count badge. Small kb-side edit, routed as a **released-work defect against
-`w0-keyboard-shortcuts`** if BOSS chooses to fix rather than accept. (Sequencing nuance for the
-implementer: on an orange tab the kb `!` and the orange count would then both be tab-specific —
-the fix should define which wins during the brief flash window, e.g. let the `!` show then
-re-assert the count on reset, the same steady-state-after-flash discipline this feature already
-owns in AC11.)
-
-**BOSS decision needed at STORIES_LOCKED — pick one:**
-- **(a) Accept** the silent-orange-tab-error as a bounded best-effort gap — rare trigger (a
-  failure on a tab that *just* captured successfully: content script already loaded, target
-  already resolved) plus the soft count-not-moving cue. If accepted, the revisit triggers still
-  apply: re-open if `w2-screenshot-gallery` revisits orange-tab error feedback, if
-  capture-failure-on-orange becomes common, or if a user reports a silently-failed capture.
-- **(b) Route the kb released-code defect** above (tab-scope the flash).
-
-NOT closed here. Surfaced into the decision-memo (Phase 6.5 reads this story) so the BOSS
-decision is on the record. fe-003's own diff is unaffected by either outcome (it never edits kb
-code); only the optional kb-side defect is deferred — so the story stays `approved` while this
-decision remains open.
+**⚠️ AC5-keyboard residual — FLAGGED to team-lead (kb-side fix needed before STORIES_LOCKED).**
+Verified against kb's shipped (c) code: `clearFlash(tabId)` (`background.js:131-139`) is
+UNCONDITIONAL — `setBadgeText({tabId, text:""})` — and `scheduleFlashClear` (`:166-174`) runs
+it on BOTH the success (2 s) and error (4 s) timeouts. On the keyboard-shortcut **success**
+path the `reportCountChanged` tick paints orange `N+1` at ~capture time, kb's `✓` overwrites
+it, and kb's +2 s `clearFlash` then blanks the tab to empty — so the orange count is GONE until
+the next wake-reconcile, **not just on the error path**. This conflicts with **AC5** ("live
+count … no tab switch") and the **"Live increment on the keyboard-shortcut path"** +
+**"steady-state-after-flash"** E2Es (which assert the badge shows the count after the `✓`
+resets, no tab switch). fe-003 cannot fix this alone (no post-flash signal under (c) — that is
+what the seam provided). **Recommended fix (kb-side, keeps fe-003 no-seam):** make kb's
+`clearFlash` GUARDED — clear only if the tab's badge still shows kb's own `✓`/`!`
+(`getBadgeText({tabId})` check) — so a tick-painted count is preserved and only a genuine error
+flash clears to empty (making the "error-only cosmetic residual" framing actually true).
+Alternatively re-adopt seam-(b). **Pending team-lead/BOSS reconciliation.**

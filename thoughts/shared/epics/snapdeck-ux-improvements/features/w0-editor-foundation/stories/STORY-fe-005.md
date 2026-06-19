@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: approved
+status: in-progress
 depends_on: [STORY-fe-001]
 created_at: 2026-06-19T03:55:00Z
 last_run_id: run-20260619-021434-24507
@@ -177,9 +177,22 @@ STORY-do-001 (which `depends_on` this story — the file must exist before it is
   This module is the load-bearing dependency of the `fe-005 → do-001 → fe-003/fe-004` chain. No
   story-content change. **Promoted `pending → approved`.**
 
+## Engineer Notes
+
+Smoke verification: pure module — no browser/Konva dependencies. `node --test extension/*.test.mjs` passed with **56/56** tests (31 new editor.model tests + 25 pre-existing).
+
+Implementation notes:
+- UMD wrapper: CJS branch (`module.exports`) for node --test; `root.__snapdeckEditorModel` for browser content script.
+- `projectAnnotations`: ported byte-for-byte from editor.js:220-223 (original inline projection) with `box` exclusion via type-specific forEach (arrow→push arrow projection, text→push text projection, box→skip).
+- `deserializeModel`: envelope-only guard (`version===1 && Array.isArray(items)`) → clone; items pass through opaquely (no per-field validation per the ratified forward-compat contract). One-line security comment explains the intentional split.
+- `serializeModel`: deep clone via `JSON.parse(JSON.stringify())` — prevents functions/prototypes in the wire payload; same idiom as editor.js clone() at line 22.
+- Test note: NaN/Infinity values become null via JSON round-trip (JSON spec); test verifies `deserializeModel` does not throw and preserves item count — the render-boundary guard handles null at renderBox/renderArrow time.
+- One auto-resolved clarification: `deserializeModel` must not throw on oversized arrays or oversized text (count/text caps are render-layer concerns per the ratified contract); verified in test cases 55-56.
+
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=2, depends on STORY-fe-001; pure-logic core for the BOSS HYBRID node:test lane)
+- 2026-06-19 — implemented (commit: 4e29db1)
 
 ## Security Review
 

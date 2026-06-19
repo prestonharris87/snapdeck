@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 3
-status: approved
+status: in-progress
 depends_on: [STORY-fe-001]
 created_at: 2026-06-19T03:10:00Z
 last_run_id: run-20260619-021434-24507
@@ -188,9 +188,21 @@ STORY-fe-001 (needs the `box` model item + `renderBox` to attach select/resize t
   matches feature.md §"UX patterns / interaction notes". No story-content change. **Promoted
   `pending → approved`.**
 
+## Engineer Notes
+
+Smoke verification: browser-tester smoke deferred — extension requires user-owned Chrome (`.claude/state/dev-server.txt` empty). Manual verification deferred — extension content-script.
+
+Implementation notes:
+- `selectLayer` inserted between `annLayer` and `cursorLayer` so transformer handles appear above annotations but below the cursor layer.
+- `attachBoxTransformer` calls `snapshot(); render()` on `transformend` (after scale bake) so the baked geometry is correctly re-created on the re-render and undo history is correct.
+- `dragend` in `attachBoxTransformer` calls only `snapshot()` (no render) since Konva has already moved the node to the new position — this is sufficient for drag interactions.
+- Escape deselect: `selectedId` check precedes `finish(true)` call, preserving the no-selection Escape→close behavior.
+- Konva.Transformer confirmed available in `extension/lib/konva.min.js` (devops-architect 2026-06-19).
+
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=3, depends on STORY-fe-001)
+- 2026-06-19 — implemented (commit: 4e29db1)
 
 ## Security Review
 

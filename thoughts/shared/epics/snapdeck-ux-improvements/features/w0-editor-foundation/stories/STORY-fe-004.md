@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: approved
+status: in-progress
 depends_on: [STORY-fe-001, STORY-fe-003, STORY-fe-005, STORY-do-001, STORY-be-001]
 created_at: 2026-06-19T03:30:00Z
 last_run_id: run-20260619-021434-24507
@@ -164,10 +164,26 @@ transition, `frontend_lane: N/A`, so no reduced-motion-affected animation.
   the render dispatch (`render()`/`renderBox`/`renderArrow`), NOT in `deserializeModel` (the opaque
   forward-compat pass-through stays intact). See the `**PO disposition:**` line in `## Security Review`.
 
+## Engineer Notes
+
+Smoke verification: browser-tester smoke deferred — extension requires user-owned Chrome. Manual verification deferred — extension content-script (round-trip test requires ANNOTATE + stored model from STORY-be-001).
+
+Implementation notes:
+- `openEditor(imageDataUrl, initialModel)` seeds model with `window.__snapdeckEditorModel.deserializeModel(initialModel)` — returns `[]` for absent/null/invalid payloads, no throw.
+- `past`/`future` stay `[]` on hydration — hydrated state is the undo baseline (Undo-is-no-op immediately after hydration).
+- Render-boundary guard (PROMOTE_TO_AC from security-architect):
+  - `renderArrow`: skips items with non-finite x1/y1/x2/y2 (isFiniteNum check).
+  - `renderText`: skips non-finite x/y; caps text to `RENDER_TEXT_CAP=10000` chars.
+  - `renderBox`: skips non-finite x/y/width/height; skips width≤0 or height≤0.
+  - `render()`: slices model to `RENDER_ITEM_CAP=500` items before iterating.
+- `deserializeModel`'s opaque item pass-through is preserved — no per-item validation added to the pure module.
+- NaN/Infinity values in stored models (which JSON-serialized as null) are handled by the render guards (null is not a finite number → item skipped).
+
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=2)
 - 2026-06-19 — revised by frontend-architect for BOSS HYBRID ruling: hydrate via pure deserializeModel (STORY-fe-005); depends_on now [STORY-fe-001, STORY-fe-003, STORY-fe-005, STORY-do-001, STORY-be-001]
+- 2026-06-19 — implemented (commit: 4e29db1)
 
 ## Security Review
 

@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: approved
+status: in-progress
 depends_on: [STORY-fe-001, STORY-fe-005, STORY-do-001]
 created_at: 2026-06-19T03:30:00Z
 last_run_id: run-20260619-021434-24507
@@ -191,10 +191,22 @@ PNG: gate `annotated` on `model.length` (provably byte-identical for the frozen 
   story's `validates` enforce the same byte-freeze. No story-content change. **Promoted `pending →
   approved`.**
 
+## Engineer Notes
+
+Smoke verification: browser-tester smoke deferred — extension requires user-owned Chrome. Manual verification deferred — extension content-script.
+
+Implementation notes:
+- `finish()` calls `window.__snapdeckEditorModel.projectAnnotations(model)` (byte-frozen; box excluded) and `window.__snapdeckEditorModel.serializeModel(model)` (lossless deep clone `{version:1,items:[...]}`).
+- Annotated gate widened to `losslessModel.items.length` — byte-identical for arrow/text (1:1 projection; model.length===annotations.length) and keeps annotated PNG for box-only screenshots.
+- The `model` field is always present on a non-cancelled resolve (empty model → `{version:1,items:[]}`).
+- No inline projection logic remains in `editor.js`; all projection is delegated to the pure module.
+- `window.__snapdeckEditorModel` is live at runtime because STORY-do-001 lists `editor-model.js` before `editor.js` in manifest `content_scripts`.
+
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=2)
 - 2026-06-19 — revised by frontend-architect for BOSS HYBRID ruling: consume pure module (STORY-fe-005) + add node:test unit lane; depends_on now [STORY-fe-001, STORY-fe-005, STORY-do-001]
+- 2026-06-19 — implemented (commit: 4e29db1)
 
 ## Security Review
 

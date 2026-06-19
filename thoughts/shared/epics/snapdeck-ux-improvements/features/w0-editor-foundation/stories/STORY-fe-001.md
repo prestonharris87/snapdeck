@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: approved
+status: in-progress
 depends_on: []
 created_at: 2026-06-19T03:10:00Z
 last_run_id: run-20260619-021434-24507
@@ -173,9 +173,21 @@ none — pure additive extension of the editor's model/render/draw/toolbar; no A
   keeps the lossy projection truly frozen (box is never projected). No story-content change required.
   **Promoted `pending → approved`.**
 
+## Engineer Notes
+
+Smoke verification: this story's browser interaction requires a running Chrome extension. Browser-tester smoke is deferred — dev server not available in this run (`.claude/state/dev-server.txt` empty). Manual verification deferred — extension content-script; browser-tester smoke pending when extension is loaded in user-owned Chrome.
+
+Implementation notes:
+- `renderBox` uses `fill: "rgba(0,0,0,0.001)"` for interior hit-testability as specified.
+- Sub-threshold reject: `width > 4 && height > 4` (mirrors arrow's `>8` guard).
+- Box item committed to model only on mouseup (mirrors arrow's commit pattern).
+- `_x0/_y0` drag-origin fields on the transient `drawing` object are stripped on commit (not added to model item).
+- Render-boundary guard constants `RENDER_ITEM_CAP`/`RENDER_TEXT_CAP` defined alongside render functions (fe-004 per dependency order, but placed together for logical cohesion in the file).
+
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=2, depends on none)
+- 2026-06-19 — implemented (commit: 4e29db1)
 
 ## Security Review
 

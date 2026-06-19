@@ -1,0 +1,137 @@
+---
+name: "Register editor-model.js content script in manifest"
+type: story
+id: STORY-do-001
+epic: snapdeck-ux-improvements
+feature: w0-editor-foundation
+assignee: devops-engineer
+author_architect: devops-architect
+status: pending
+sentinel: false
+effort: 1
+diff_estimate: mechanical
+files_modified:
+  - extension/manifest.json
+files_not_modified:
+  - extension/content/editor.js
+  - extension/content/editor-model.js
+  - extension/content/capture.js
+  - extension/content/bridge.js
+  - extension/background.js
+  - extension/lib/konva.min.js
+reuse_patterns:
+  - "extension/manifest.json:32 — content_scripts[1].js load-order array (lib/konva.min.js, bridge.js, editor.js); extend in place, don't restructure"
+  - "extension/manifest.json:23-36 — content_scripts block shape (matches / run_at / css) to keep consistent"
+depends_on: [STORY-fe-005]
+---
+
+# STORY-do-001 — Register `content/editor-model.js` as a content script
+
+## What we're doing
+
+The HYBRID test ruling moves the editor's pure serialize/project/deserialize logic out of
+the side-effect-bearing `content/editor.js` IIFE into a new, side-effect-free module
+`content/editor-model.js` (created by **STORY-fe-005**) so `node --test` can import it
+headlessly. At runtime, `editor.js` consumes that logic through a shared isolated-world
+global (`globalThis.__snapdeckEditorModel`) that `editor-model.js` sets on load. For that
+global to be live before `editor.js` runs, the new file must be registered in the manifest's
+existing content-script entry, **ordered before `content/editor.js`**. This story is that one
+manifest registration — nothing else.
+
+## What it should look like
+
+In `extension/manifest.json`, the **second** `content_scripts` entry (the `document_idle`,
+isolated-world one — NOT the MAIN-world `capture.js` entry) gains `"content/editor-model.js"`
+in its `js` array, inserted immediately **before** `"content/editor.js"`:
+
+```json
+{
+  "matches": ["http://localhost/*", "http://127.0.0.1/*"],
+  "js": [
+    "lib/konva.min.js",
+    "content/bridge.js",
+    "content/editor-model.js",
+    "content/editor.js"
+  ],
+  "css": ["content/overlay.css"],
+  "run_at": "document_idle"
+}
+```
+
+Constraints:
+- **Same entry, same `matches`/`run_at`/`world`** as `editor.js` — do not add a new
+  `content_scripts` entry, do not change the entry's match pattern or timing.
+- **Order is load-bearing, not cosmetic.** Content scripts in one entry execute in array
+  order within the **same isolated world**, so the `globalThis.__snapdeckEditorModel` global
+  that `editor-model.js` sets is visible to `editor.js` only if it runs first. Place it after
+  `bridge.js` and before `editor.js`.
+- **No other manifest change**: no new permission, no new `host_permissions`, no
+  `web_accessible_resources`, no `commands` block. Konva is already vendored and listed
+  (verified `lib/konva.min.js` ships the full Transformer, so no re-vendor).
+
+## How we're doing it
+
+- Touch only `extension/manifest.json`. The new file itself is authored by **STORY-fe-005**
+  (FE domain) — do **not** create or edit `content/editor-model.js` or `content/editor.js`
+  here.
+- This is an unpacked MV3 extension with **no build system and no bundler**, so there is no
+  build target to update and no manifest is generated — the hand-edited `manifest.json` is the
+  shipping artifact.
+- Validate the manifest the way this project's no-build stack allows (there is no CI pipeline
+  and no schema-lint step in-repo — confirmed: the only workflow YAMLs live under `.claude/`,
+  which is framework infra, not the project CI surface):
+  - `node -e "JSON.parse(require('fs').readFileSync('extension/manifest.json','utf8'))"`
+    must exit 0 (well-formed JSON after the edit).
+  - Every path in each `content_scripts[].js` array must exist on disk — in particular
+    `extension/content/editor-model.js` must be present (this is why the story
+    `depends_on: STORY-fe-005`; registering a path to a missing file makes Chrome log
+    "Could not load javascript 'content/editor-model.js' for content script" on load).
+
+## How we validate
+
+- **Manifest loads clean:** load the unpacked extension at `chrome://extensions`; the editor
+  content script injects on a `http://localhost/*` page with **no** "Could not load
+  javascript …" error in the extension's console.
+- **Global ordering holds:** on a captured localhost page, `globalThis.__snapdeckEditorModel`
+  is defined by the time `editor.js`'s `ANNOTATE` handler runs (FE's fe-003/fe-004 exercise
+  this; this story only guarantees the load-order that makes it possible).
+- **No scope creep:** `git diff extension/manifest.json` shows exactly one added array element
+  (`"content/editor-model.js"`) in the second `content_scripts` entry and nothing else — no
+  permission/host/command delta. (devops-validator auto-rejects any unrelated manifest change.)
+
+## Unit tests
+
+For a no-build manifest change, the headless test is JSON validity + path existence:
+
+```bash
+# manifest parses as valid JSON
+node -e "JSON.parse(require('fs').readFileSync('extension/manifest.json','utf8'))"
+
+# every registered content-script path exists, and editor-model precedes editor
+node --test  # (or a small assert script)
+```
+
+Assertion shape (mockable with `fs`): read `manifest.json`, find the `document_idle`
+content-script entry, assert `js` contains `content/editor-model.js`, assert its index is
+**less than** the index of `content/editor.js`, and assert each `js` path resolves to an
+existing file under `extension/`. No network, no browser — pure file I/O, fits the HYBRID
+`node --test` lane.
+
+## Observability / API surface
+
+- **No observability story owed.** Snapdeck has no logging/metrics/tracing stack to extend;
+  a content-script registration emits no runtime telemetry. The behavioral round-trip it
+  enables is covered by the PO E2E specs in `feature.md` and FE's `node --test` module suite.
+- **No API-spec/doc update owed.** This changes no HTTP surface; the lossy `annotations`
+  projection and `/report/save` payload remain byte-frozen, and the `model` rides the internal
+  editor→background resolve message channel.
+
+## Dependencies
+
+- `STORY-fe-005` — authors `content/editor-model.js` (the pure, node-importable module that
+  sets `globalThis.__snapdeckEditorModel`). The manifest entry must point at an existing file,
+  so this registration depends on that file landing first. FE's runtime-consumer stories
+  (`STORY-fe-003` finish()-serialize, `STORY-fe-004` hydration) in turn `depends_on`
+  `STORY-do-001` because they need the global live at runtime — yielding the clean chain
+  `fe-005 → do-001 → fe-003/fe-004` (no cycle; fe-005's own node tests import the file from
+  disk and do not depend on the manifest).

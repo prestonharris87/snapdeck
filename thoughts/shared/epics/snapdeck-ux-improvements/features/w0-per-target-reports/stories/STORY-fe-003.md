@@ -309,3 +309,86 @@ This story IS the post-release additive revision to the already-released
 - 2026-06-19 — created by frontend-architect (add-story mode; effort=2, depends
   on STORY-fe-001). Purely additive `chrome.storage.session` report-count
   emission at 3 sites; status left `pending` for team-lead PO arbitrate pass.
+
+## Contrarian Findings
+
+_Single-story (add-story mode) stress-test, 2026-06-19. The locked contract
+(`storage.session` mechanism + `{port,count,ts}` payload) was NOT re-litigated;
+these probe only risks that survive WITHIN the locked design into
+implement/runtime. **0 block, 2 concern, 1 note.**_
+
+**Dismissed after reading the code (verified-to-dismiss):**
+- *2nd-listener / missing-storage-key frozen breaks* — already enumerated by the
+  story and confirmed: the shortcuts suite (`background.shortcuts.test.mjs`) sets
+  `globalThis.chrome` with NO `storage` key, so `chrome.storage?.session?.set?.()`
+  short-circuits to a no-op; its full-success `addScreenshot` cases
+  (`:235`, `:299`) reach site 1 but the optional chain no-ops cleanly. ✓
+- *Reports suite reaching an emit site* — `background.reports.test.mjs` drives
+  `addScreenshot` only on the deceptive-host case (returns BEFORE `setReport`, no
+  emit), exercises `clearReport` via the **helper directly** (not the CLEAR_REPORT
+  handler where site 3 lives), and never sends `SAVE_REPORT`/`CLEAR_REPORT` via the
+  handler. No emit site is reached; even if it were, its vm mock has no `storage`. ✓
+- *Cumulative `node --test extension/*.test.mjs` cross-file contamination* — node's
+  test runner isolates each file in its own process; the new file MIRRORS the vm
+  harness (own sandbox, own `fetch`/`tabs` stubs) so it can't collide with the
+  shortcuts file's `globalThis` pollution or the reports file's rejecting `fetch`. ✓
+
+### Finding 1 — `saveReport` no-emit is tested on only 1 of its 4 non-emit branches
+
+**Severity:** concern
+**Mechanism:** The site-2 emit lives INSIDE the nested `if (res.json && res.json.ok)`
+block (`background.js:257-259`), and the story correctly forbids emitting on the
+no-port (`:237`), empty-report (`:239`), no-controller (`:242-244`), and failed-POST
+(`:261`) paths. But the proposed `## Unit tests` set covers only
+`saveReport_failedPost_noEmit`. The no-controller and empty-report paths are
+distinct EARLY returns above the `if` block — exactly where a future refactor that
+hoists the emit (e.g. "emit right after we know the port") would land. Such a
+regression fires a phantom `{count:0}` tick on a save that did NOT clear the
+report, so the w1 badge would read 0 while the report still holds N screenshots —
+silent, and uncaught by the current test list. This is the highest-value gap (test
+coverage that no test actually owns is the recurring add-story catch).
+**Recommendation:** mitigate-via-one-extra-test — add `saveReport_noController_noEmit`
+(stub `fetch` so every `/resolve?port=` probe fails → `findController` returns null
+→ early return at `:243`; assert NO tick captured). Optionally also
+`saveReport_emptyReport_noEmit`. No design change; one (maybe two) test cases.
+
+### Finding 2 — the tick stream is best-effort/lossy; the consumer must reconcile, not trust it as a complete count log
+
+**Severity:** concern
+**Mechanism:** The helper's `.set()` is intentionally fire-and-forget (un-awaited —
+correct, since awaiting would couple released return timing to a storage write).
+But that means (a) if the MV3 service worker is torn down after the synchronous
+`.set()` is issued but before the async write lands, the tick is lost, and (b)
+`chrome.storage.session` is wiped entirely when the browser session ends / the SW's
+backing store resets — so on a cold SW wake the last tick is simply gone. The w1
+badge consumer therefore CANNOT treat the `onChanged` stream as a lossless log of
+every count change; it needs an independent reconciliation read (the released
+`GET_STATE` already returns `{count, port}` — popup-open / SW-wake reconciliation)
+or the badge silently drifts. This assumption is invisible in the current story and
+would otherwise only surface when the consumer team debugs a stale badge.
+**Recommendation:** acknowledge — add a one-line story note (and it carries into the
+serialized `w1-dynamic-icon-badge` consumer) stating the tick stream is
+**best-effort**: ticks may be dropped on SW suspension / session reset, so the
+consumer must reconcile via `GET_STATE` on a known wake point. No code change in
+this story.
+
+### Finding 3 — shared `storage.session` area is non-exclusive, and `ts:Date.now()` has a same-millisecond identical-payload blind spot
+
+**Severity:** note
+**Mechanism:** Two small forward-looking couplings worth recording, neither
+blocking: **(a)** this `reportCountChanged` key shares the `storage.session` area
+with w1-fe-002's `/resolve` cache (different key). Today that's safe (single tiny
+overwritten key, well under quota; w0 only WRITES, never adds an `onChanged`
+listener, so no self-trigger). But it means the area is NOT exclusive — any future
+`chrome.storage.session.setAccessLevel(...)` to expose it to content scripts, or a
+w0-side `onChanged` listener, would also see the cache's cross-key traffic. **(b)**
+The story's stated purpose for `ts` is "force `onChanged` on an identical
+`{port,count}` re-emit" — but `Date.now()` is millisecond-resolution, so two
+count-changes inside the same millisecond produce a byte-identical payload, and
+`storage.onChanged` is not guaranteed to fire when the new value deep-equals the
+old. Realistically rare (capture requires the annotation UI; save→clear are
+distinct user actions) and absorbed by Finding 2's reconciliation, so no action —
+but the `ts` mitigation is imperfect, not airtight. The contract is locked, so this
+is recorded, not a request to swap `ts` for a monotonic counter.
+**Recommendation:** acknowledge — fold both into the same story note as Finding 2.
+No code or contract change.

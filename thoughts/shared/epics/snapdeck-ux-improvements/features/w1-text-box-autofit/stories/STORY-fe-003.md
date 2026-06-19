@@ -183,3 +183,51 @@ feature level. No cross-domain dependency; see feature.md §No-work domains.)
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=2, depends on STORY-fe-001, STORY-fe-002)
+
+## Contrarian Findings
+
+_Phase 5.5 stress-test (contrarian-architect). Claims verified against released
+`extension/content/editor.js` (lines cited inline)._
+
+### Finding 1 — Body-dragging an *unselected* text box silently loses the move (no `dragend` write-back) — and this story enshrines it into the shared shape mechanism w2 inherits
+
+**Severity:** concern
+**Mechanism:** In select mode the node is `draggable: tool === "select"` (STORY-fe-002 sets this on the
+Group; `editor.js:178` does the same on `renderBox`'s rect) — i.e. **draggable even when not selected**.
+The `dragend` that writes `item.x/item.y` back to the model lives **only** inside `attachBoxTransformer`
+(`editor.js:69`), which this story calls **only** in the `selectedId === item.id` block. So if the user
+mousedown-drags a text box that is not already selected, Konva moves the node and suppresses the trailing
+`click` (so no selection happens either) → **no `dragend` fires → the model is never updated**. The very
+next `render()` (select something else, resize, undo, tool change, or `finish()` at `editor.js:300` right
+before serialize) rebuilds the Group at the old `item.x/item.y`, so the move **silently reverts** — and
+if it reverts during `finish()`, the saved screenshot loses the move entirely. This is identical to the
+released `renderBox` characteristic, so it is "consistent with w0," but this story explicitly makes
+select/move/resize "one shared mechanism across box and text" that "**w2-rectangle-tool reuses**" — so
+the latent move-loss is about to be enshrined as the contract for a third shape, tripling its surface
+before anyone has consciously accepted it. **Recommendation:** acknowledge or mitigate-via-revision. Two
+clean options: (a) accept as consistent-with-w0 and add an `## Acknowledged Risk` block stating the
+"select-then-drag" requirement is intentional; or (b) fix once in the shared path — gate `draggable` on
+`tool==="select" && selectedId===item.id` so an unselected box's mousedown selects (via the `click`
+handler) instead of dragging, then a second drag moves it with the helper's `dragend` attached. Option (b)
+touches the shared box/text/rect pattern, so it is a deliberate cross-shape decision for arbitration, not
+an in-FE-story tweak.
+
+### Finding 2 — Group-vs-Rect transformer attachment: the fallback path has un-analyzed live-drag and hit-test behavior
+
+**Severity:** info
+**Mechanism:** The story prefers attaching `attachBoxTransformer` to the fe-002 `Konva.Group` (which has
+explicit `width/height` so the helper's `node.width()*node.scaleX()` bake at `editor.js:64-65` is
+well-defined), but hedges: "if the Group's intrinsic size is not honored ... attach to the background Rect
+instead and keep the Text synced on render." That fallback changes behavior the ACs do not cover: (1) the
+helper's `dragend` writes `item.x/item.y` from the **Rect's** position, but the Text is a *sibling*, not a
+child, so during a body-drag the Text does not move with the Rect until the next `render()` — a visible
+lag; (2) on resize, only the Rect scales live while the Text stays put, then snaps on `transformend`; (3)
+whichever node sits on top intercepts clicks, so the Text node must be `listening:false` or the Rect's
+click-select/transform handles can be shadowed. Separately, even on the **preferred** Group path, a
+non-uniform corner resize scales the Group via `scaleX/scaleY`, so the black glyphs visibly **stretch/squash
+during the drag** and snap to the re-fit only on release (the story calls this an acceptable "visual
+preview") — a tester unaware of this may file the mid-drag distortion as a rendering bug.
+**Recommendation:** record the decision explicitly. Prefer the Group; if falling back to the Rect, require
+the Text be a child of the transformed node (or `listening:false` and resynced on render) so move/resize
+affect text+box as one unit. Add a one-line note to the resize E2E that mid-drag glyph distortion before
+the on-release re-fit is expected, not a defect.

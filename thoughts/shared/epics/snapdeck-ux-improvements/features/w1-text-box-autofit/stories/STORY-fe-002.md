@@ -187,3 +187,50 @@ animations/transitions, so there is no reduced-motion-affected motion. Consisten
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=3, depends on STORY-fe-001)
+
+## Contrarian Findings
+
+_Phase 5.5 stress-test (contrarian-architect). Claims verified against released
+`extension/content/editor.js` (lines cited inline)._
+
+### Finding 1 — `innerW`/`innerH` go negative for small-but-valid boxes; the fit helper's behavior there is unspecified and untested
+
+**Severity:** concern
+**Mechanism:** The draw guard accepts any box with `width>4 && height>4` (`editor.js:254`, mirrored by
+STORY-fe-001), so a thin text box (e.g. 8px wide × 200px tall) is fully creatable by normal dragging.
+This story then computes `innerW = item.width - 2*PAD` with `PAD~6`, giving `innerW ≤ 0` for **any box
+≤ ~12px** in a dimension (8px → `innerW = -4`). The render-time geometry guard you specify
+(`if (item.width<=0) return`) does **not** catch `width=8` (it is `>0`), so the negative inset flows
+straight into `fitTextFontSize(...)`, which sets `Konva.Text.width(innerW)` to a negative value and tests
+"wrapped height ≤ innerH (also negative)". Konva's wrap behavior at a negative width is **unspecified** —
+it can degrade to one glyph per line, which on the length-capped-but-still-10 000-char `safeText` means
+measuring up to ~10 000 lines, up to `(cap-min)=42` times, per item, up to `RENDER_ITEM_CAP=500` items.
+That is the one path in the fit loop I could not prove stays cheap. The feature's load-bearing
+robustness contract — "auto-fit does not throw or hang on hostile geometry/text," which **w2-screenshot-gallery
+relies on when it re-opens arbitrary stored models through this exact path** — is exercised by the
+hostile-item E2E using `NaN`/`Infinity`/`"200"`, none of which resemble a plain finite `width:8`. So the
+test suite as specified would **not** catch this. I am not asserting it definitively hangs (I could not
+run Konva here; lock-it-down rule), but the behavior is unverified and the inputs are reachable.
+**Recommendation:** revise — clamp the inset to a positive floor in the fit helper
+(`innerW = Math.max(1, item.width - 2*PAD)`, same for `innerH`), or short-circuit to `TEXT_AUTOFIT_MIN`
+(and rely on the group `clip`) when `item.width < 2*PAD || item.height < 2*PAD`. Add one browser-tester
+E2E case: a sub-`2*PAD` text box renders without throw/hang/console-error and clips. (Availability-adjacent;
+if the negative-width wrap can hang, **security-architect Phase 7** may wish to confirm against the DoS-robustness contract.)
+
+### Finding 2 — Recompute-on-render keeps the *model* round-trip identical but makes the *rendered* wrap/font font-environment-dependent
+
+**Severity:** info
+**Mechanism:** The "no stored `fontSize`" decision is correct for `deepEquals(model.items)` — geometry +
+text are all that persist, so `model → persist → load → model` is identity regardless of environment.
+But the acceptance criteria and stories *also* claim the reloaded box "reconstructs the same line count +
+font on reload." That second claim only holds where Konva's canvas text measurement returns the same
+metrics — i.e. the **same font is available and rendered identically**. This story does not pin a
+`fontFamily` on the `Konva.Text`, so it inherits Konva's default. **w2-screenshot-gallery re-opens
+arbitrary stored models** (scope) and could do so in a different browser/OS/font environment, where the
+default sans-serif metrics differ → a different wrap → a different line count/effective font, even though
+the model bytes are byte-identical. The round-trip *test* (deepEquals on model items) stays green; the
+*visual* reconstruction is the silent variable. **Recommendation:** mitigate cheaply — set an explicit
+web-safe `fontFamily` (e.g. a fixed `sans-serif` stack) on the text node so measurement is as stable as
+the platform allows, and record in the story that pixel-identical re-render across font environments is
+**not** guaranteed (only model-byte identity is). Prevents a future consumer from assuming cross-machine
+visual identity the design does not provide.

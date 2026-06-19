@@ -213,3 +213,39 @@ none — builds on the **released** w0-editor-foundation contracts (feature-leve
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=2, depends on none)
+
+## Contrarian Findings
+
+_Phase 5.5 stress-test (contrarian-architect). Verified against released `extension/content/editor.js`
+lines cited inline. The FE auto-fit design was not peer-challenged in this feature's `conversations/`
+(all non-FE domains correctly sentineled), so these shared assumptions went unscrutinized._
+
+### Finding 1 — Re-editing a committed box to empty text DELETES the whole box (geometry + all)
+
+**Severity:** info
+**Mechanism:** This story makes `editText` box-aware but preserves its commit semantics "verbatim"
+(`editor.js:201-212`): `commit()` does `if (!v) { model = model.filter(m => m.id !== item.id) }`.
+That removal path is shared between **create** (intended: no orphan empty boxes) and **re-edit**
+(double-click, STORY-fe-003). So double-clicking an already-committed text box, clearing its text, and
+committing (Enter/blur) **destroys the committed box and its `{x,y,width,height}`** — not just the text.
+The re-edit acceptance criterion is framed as "Re-committing preserves the box geometry (only `text`
+changes)" (feature.md), which silently does not hold on the empty path. feature.md does consciously
+choose "committing an empty text box removes the item," but it frames that against the *create* flow;
+the *re-edit→empty→delete-committed-box* interaction is unstated and contradicts Google-Slides parity
+(Slides retains an emptied box). It is undoable (a `snapshot()` follows), so blast radius is one undo.
+**Recommendation:** acknowledge — confirm in arbitration that re-edit→empty SHOULD delete a committed
+box (current plan, consistent with create) vs. retain it (Slides parity). If "delete" is intended,
+add a one-line note to the fe-003 re-edit AC so the browser-tester does not file it as a regression.
+
+### Finding 2 — Draw threshold (`>4`) admits boxes thinner than the fit inset; feeds the fe-002 negative-inner edge
+
+**Severity:** info (cross-reference — primary finding is on STORY-fe-002)
+**Mechanism:** This story mirrors the box draw's sub-threshold reject `width>4 && height>4`
+(`editor.js:254`), so a box as thin as ~5px in either dimension is accepted and pushed to the model.
+STORY-fe-002 then computes the text inset `innerW = item.width - 2*PAD` (`PAD~6`), which goes **negative**
+for any accepted box ≤ ~12px wide/tall. The draw guard and the fit-inset math were specified in separate
+stories and never reconciled, so a normally-drawable thin box lands in an unspecified region of the fit
+helper (see STORY-fe-002 Finding 1). **Recommendation:** no change required here if fe-002 clamps the
+inset to a positive floor; flagged only so the two thresholds are reconciled consciously rather than by
+accident. Do **not** raise the draw threshold to `2*PAD` (that would silently reject legitimately small
+boxes) — fix the clamp in the fit helper.

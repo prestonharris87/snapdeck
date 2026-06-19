@@ -1,0 +1,9 @@
+{
+  "name": "snapdeck-extension-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright E2E tests for the Snapdeck Chrome extension",
+  "devDependencies": {
+    "@playwright/test": "^1.61.0"
+  }
+}

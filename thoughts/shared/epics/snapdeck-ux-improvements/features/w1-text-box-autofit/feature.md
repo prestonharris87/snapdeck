@@ -316,4 +316,6 @@ Domains an architect explicitly decided needed no work for this feature. The sen
 
 ## History
 
+
+- 2026-06-19T18:48:55Z — team-lead — FROZEN / FEATURE_READY (BOSS-mode): all 3 FE stories validated; gates green (node --test 95/95, Playwright 5/5 + C/D); 5b screenshots 4/4; DEFECT-001 resolved (dblclick re-edit + accurate bounded auto-fit, r2). Awaiting BOSS wave-PR + release stamp.
 2026-06-19T17:10:13Z — orchestrator: status: 'planned' -> 'in-progress' (started via /mat_implement_feature (BOSS-mode))

@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 3
-status: needs-work
+status: validated
 depends_on: [STORY-fe-001]
 created_at: 2026-06-19T15:30:00Z
 last_run_id: run-20260619-150554-36418
@@ -243,6 +243,8 @@ animations/transitions, so there is no reduced-motion-affected motion. Consisten
 
 
 
+
+- 2026-06-19T18:47:32Z — orchestrator — re-validation r2 VALIDATED (37ed252): full-text two-phase fit, AC#3 regression closed; honesty passed; bt C+D pass.
 - 2026-06-19T18:37:34Z — orchestrator — re-validation r1 needs-work: TEXT_FIT_SAMPLE=500 under-samples fit → over-large font / clipped overflow for 500+ char text in non-degenerate boxes (AC#3). Routing remediate r2.
 - 2026-06-19T17:24:51Z — orchestrator — validate validated; honesty passed (BOSS-mode implement)
 - 2026-06-19 — created by frontend-architect (effort=3, depends on STORY-fe-001)

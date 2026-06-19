@@ -3,9 +3,9 @@ type: feature
 slug: w0-per-target-reports
 wave: 0
 parent_epic: snapdeck-ux-improvements
-status: planned
+status: in-progress
 created_at: 2026-06-18T00:00:00Z
-last_run_id: run-20260619-021434-24507
+last_run_id: run-20260619-034752-73507
 depends_on: []
 frontend_lane: N/A
 visual_references: []
@@ -260,3 +260,7 @@ Domains an architect explicitly decided needed no work for this feature. The sen
 - **backend** — No backend changes required for this feature.
 - **database** — **No database changes required for this feature.**
 - **devops** — No devops changes required for this feature.
+
+## History
+
+2026-06-19T03:49:51Z — orchestrator: status: 'planned' -> 'in-progress' (started via /mat_implement_feature (BOSS-mode))

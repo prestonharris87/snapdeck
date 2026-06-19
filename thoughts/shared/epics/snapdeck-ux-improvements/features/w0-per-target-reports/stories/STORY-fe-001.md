@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: []
 diff_estimate: substantive
 files_modified:
@@ -300,3 +300,22 @@ Established by peer rounds during decomposition (2026-06-19); recorded durably h
   Domain (extension `background.js`) assigned to FE by team-lead for this feature.
   Controller no-op + DB no-op peer-confirmation requested from backend-architect
   and database-architect.
+
+## Revisions
+
+- 2026-06-19 — **product-owner (arbitrate):** Promoted `pending → approved`.
+  **PO-accepted intentional change recorded:** STORY-fe-001 intentionally RETIRES
+  `saveReport()`'s legacy fallback `portOfUrl(screenshots[0].url)` (old
+  `extension/background.js:149`). Under per-port keying the report key must be
+  resolved from the active tab's port *before* the record can be read, so
+  deriving the port from already-loaded report contents is logically incompatible
+  with the new read-by-key flow. Consequence: a `SAVE_REPORT` on a non-target
+  (non-localhost) tab now returns the existing `"could not determine the
+  dev-server port"` error instead of recovering a port from `screenshots[0].url`.
+  This is **scope-aligned** — the active tab IS the current target, so "save the
+  current target's report" has no meaning on a non-target tab — and it is
+  **flagged, not silently dropped** (also documented in the "Existing behavior
+  baseline → Explicitly changing" bullet). Ratified by team-lead. No cross-domain
+  impact: the controller still receives `browser_port` derived from
+  `portOfUrl(activeTab.url)`, unchanged (see STORY-be-001). No other story content
+  changed.

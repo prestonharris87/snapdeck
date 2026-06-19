@@ -221,7 +221,11 @@ already does; there are no new transitions or visual state changes to assert.
 
 ## Stories (populated by architects)
 
-- (none yet)
+- [ ] STORY-fe-001 — Re-key in-progress report to per-port + current-target resolution (frontend-engineer) · substantive · approved
+- [ ] STORY-fe-002 — `GET_STATE` additive `port` field + non-target empty-state (frontend-engineer) · substantive · approved · depends_on: [STORY-fe-001]
+- [ ] STORY-be-001 — Sentinel: no backend changes (controller `/resolve` + `/report/save` unchanged) · approved
+- [ ] STORY-db-001 — Sentinel: no server-side DB changes (IndexedDB is client-side) · approved
+- [ ] STORY-do-001 — Sentinel: no devops changes (manifest already grants `storage` + `unlimitedStorage`) · approved
 
 ## Defects (populated as found)
 

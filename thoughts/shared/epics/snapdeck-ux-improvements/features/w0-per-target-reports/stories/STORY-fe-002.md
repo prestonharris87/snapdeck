@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 1
-status: pending
+status: approved
 depends_on: [STORY-fe-001]
 diff_estimate: substantive
 files_modified:
@@ -159,3 +159,13 @@ from a backend contract. The Snapdeck controller is unchanged by this feature.)
 - 2026-06-19 — created by frontend-architect (effort=1, substantive, depends on STORY-fe-001).
   Additive `GET_STATE.port` contract for the w1 badge feature; non-target
   empty-state formalized.
+
+## Revisions
+
+- 2026-06-19 — **product-owner (arbitrate):** Promoted `pending → approved`. No
+  content changed. `depends_on: [STORY-fe-001]` verified correct — this story
+  consumes `currentTargetPort()` and the port-scoped `getReport(port)` introduced
+  by fe-001, and must land after it. The additive `GET_STATE` →
+  `{ count, note, port }` shape (with the `port: null` non-target sentinel) is
+  consistent with fe-001 and the locked scope, and is the frozen contract
+  `w1-dynamic-icon-badge` consumes. Baseline section present and file:line-grounded.

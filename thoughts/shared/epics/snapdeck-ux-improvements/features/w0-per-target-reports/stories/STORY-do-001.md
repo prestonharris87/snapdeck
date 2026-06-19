@@ -2,7 +2,7 @@
 name: "No devops changes — manifest already covers per-port storage"
 assignee: devops-engineer
 author_architect: devops-architect
-status: pending
+status: approved
 sentinel: true
 effort: 1
 diff_estimate: mechanical
@@ -58,6 +58,27 @@ unmodified. The downstream extension-logic stories' own E2E specs
 non-target tab) exercise the actual behavior; loading the unpacked extension
 with the unchanged manifest is sufficient permission coverage.
 
+- [ ] `extension/manifest.json` is unmodified by this feature — `storage` +
+      `unlimitedStorage` permissions and `host_permissions` are unchanged; no
+      build / CI / package artifact changes.
+
 ## Dependencies
 
 None — this is a standalone sentinel confirming no devops work.
+
+## Revisions
+
+- 2026-06-19 — **product-owner (arbitrate):** Promoted `pending → approved`
+  (sentinel). Added a `- [ ]` checklist item to `## How we validate` (the
+  unmodified-manifest assertion) for the required ≥1 validate item.
+  **Reconciled a factual inconsistency; verdict unchanged.** This story's Rationale
+  states the feature "adds a cross-tab port-resolution cache in
+  `chrome.storage.session`." The authoritative FE story (STORY-fe-001) ultimately
+  decided NOT to introduce one — port resolution is at-handling-time from the
+  active tab, so there is no cross-tab cache to persist (the
+  `chrome.storage.session` rule in the scope applies only IF a future change adds
+  a cache). The no-devops-work verdict holds regardless, and is in fact even more
+  clearly correct: the `storage` permission (already present, `manifest.json`
+  line 6) would cover such a cache if it existed, and nothing in the actual diff
+  touches the permission surface, host permissions, build, or CI. Flagged here
+  rather than left silently contradictory.

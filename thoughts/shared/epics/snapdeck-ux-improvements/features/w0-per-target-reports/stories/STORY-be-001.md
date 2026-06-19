@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: backend-engineer
 author_architect: backend-architect
 effort: 1
-status: pending
+status: approved
 depends_on: []
 sentinel: true
 created_at: 2026-06-19T03:00:00Z
@@ -57,6 +57,14 @@ loopback-only (`127.0.0.1`) local HTTP API with no auth scheme (`server.py:269`)
 and this feature introduces no new endpoint, so there is no auth requirement to
 state beyond "unchanged, local-loopback as established."
 
+## How we validate
+
+- [ ] No diff under `controller/` for this feature — the `GET /resolve` and
+      `POST /report/save` endpoints and the saved `report.json`/`report.md`
+      projection are byte-unchanged. The `browser_port` value the extension POSTs
+      stays derived from `portOfUrl(activeTab.url)` (consumed by `resolve_owner`,
+      `reports.py:120`), so worktree-owner resolution is unaffected.
+
 ## Dependencies
 
 none
@@ -64,3 +72,12 @@ none
 ## History
 
 - 2026-06-19 — created by backend-architect (sentinel; no backend work; controller `/resolve` + `/report/save` contract unchanged; `browser_port` already carried in the existing save payload; per-port keying is client-side IndexedDB)
+
+## Revisions
+
+- 2026-06-19 — **product-owner (arbitrate):** Promoted `pending → approved`
+  (sentinel). Added a `## How we validate` checklist item (the empty-controller-diff
+  assertion) so the story carries the required ≥1 validate item. Confirmed no
+  FE↔BE contract conflict: STORY-fe-001 keeps `browser_port` derived from
+  `portOfUrl(activeTab.url)` — exactly the derivation this sentinel's rationale
+  requires for `resolve_owner` to match a worktree's `browsable_ports`.

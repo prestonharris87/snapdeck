@@ -3,7 +3,7 @@ id: STORY-db-001
 name: "Sentinel — no server-side DB changes for per-target reports"
 assignee: database-engineer
 author_architect: database-architect
-status: pending
+status: approved
 sentinel: true
 greenfield: true
 effort: 1
@@ -82,6 +82,10 @@ frontend/extension stories, not here. If a server-side schema/migration/seed
 artifact ever appears in this feature's diff, this sentinel is wrong and must be
 reopened.
 
+- [ ] This feature's database-domain diff is empty — no server-side
+      migration / schema / seed / reference-data artifact appears (all report-store
+      changes land in `extension/background.js` under the FE stories).
+
 ## Unit tests
 
 None. Sentinel stories carry no migration and no server-side schema to inspect
@@ -96,3 +100,13 @@ None. `depends_on: []` is valid here because this is a sentinel that creates and
 consumes no server-side schema. The IndexedDB `kv` store it deliberately does NOT
 treat as a migration target is browser-resident client-side storage, owned by the
 frontend/extension domain in this same feature.
+
+## Revisions
+
+- 2026-06-19 — **product-owner (arbitrate):** Promoted `pending → approved`
+  (sentinel). Added a `- [ ]` checklist item to `## How we validate` so the story
+  carries the required ≥1 validate item. Sentinel rationale confirmed: Snapdeck has
+  no server-side relational DB / migration mechanism; the per-port IndexedDB
+  re-keying is frontend/extension-domain work (owned by STORY-fe-001/002), and the
+  report-store ownership reassignment to FE is recorded in
+  `conversations/0001-database-architect-to-frontend-architect-msg.md`.

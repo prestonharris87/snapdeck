@@ -7,7 +7,7 @@ parent_epic: snapdeck-ux-improvements
 parent_feature: w0-editor-foundation
 assignee: devops-engineer
 author_architect: devops-architect
-status: approved
+status: validated
 created_at: 2026-06-19T03:30:00Z
 last_run_id: run-20260619-021434-24507
 defects: []

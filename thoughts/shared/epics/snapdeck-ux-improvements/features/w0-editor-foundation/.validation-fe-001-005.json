@@ -1,0 +1,101 @@
+{
+  "story_ids": ["STORY-fe-001", "STORY-fe-002", "STORY-fe-003", "STORY-fe-004", "STORY-fe-005"],
+  "check": "frontend-validate",
+  "result": "validated",
+  "frozen_contract_verification": {
+    "box_geometry": "✅ VERIFIED: {x,y,width,height} top-left origin, stage/CSS px, no rotation. fe-001 lines 175-182 (top-left normalization), fe-002 line 54 (rotateEnabled:false)",
+    "persisted_model_envelope": "✅ VERIFIED: {version:1, items:[…]} additive on resolve payload alongside annotations. fe-005 serializeModel (lines 32-34), fe-003 finish() (line 316 adds 'model' field)",
+    "attachBoxTransformer_helper": "✅ VERIFIED: Frozen signature at fe-002 lines 57-70. Single shared transformer at line 54, rotateEnabled:false, writes geometry on transformend/dragend, commits snapshot()",
+    "globalThis_snapdeckEditorModel": "✅ VERIFIED: UMD module (fe-005 lines 13-18) with module.exports for CJS, root.__snapdeckEditorModel for browser. Zero chrome/window/DOM/Konva refs. All calls via window.__snapdeckEditorModel",
+    "finish_byte_frozen_projection": "✅ VERIFIED: finish() at line 306 calls em.projectAnnotations(model) (no inline). Projection ported byte-for-byte from original editor.js:220-223 with box exclusion. Test confirms field names, order, Math.round match. Resolve includes both annotations and model fields additively"
+  },
+  "per_story_results": {
+    "fe-001": {
+      "result": "validated",
+      "acs_verified": [
+        "Box tool drag-out creates Konva.Rect + pushes {type:'box'} model item with top-left-normalized {x,y,width,height} (≥0) regardless of drag direction",
+        "Sub-threshold drag rejected (width > 4 && height > 4 guard mirrors arrow's >8 logic)",
+        "render() draws box via Konva.Rect with interior-clickable fill (rgba(0,0,0,0.001))",
+        "Box button plain-text label, no emoji/symbol-icon glyph, no inline SVG",
+        "Undo immediately after draw removes box (snapshot() committed); Redo restores",
+        "No regression: arrow draw, text click-place, arrow/text select/move, undo/redo unchanged"
+      ],
+      "evidence": "editor.js lines 170-182 (box item commit), 175-176 (top-left norm), 249-250 (threshold), 175 (fill), 338-356 (toolbar button)"
+    },
+    "fe-002": {
+      "result": "validated",
+      "acs_verified": [
+        "Select mode + clicking box attaches exactly one Konva.Transformer, rotateEnabled:false",
+        "Dragging corner handle resizes box; transformend writes {x,y,width,height} with scale baked to 1; snapshot() committed; Undo restores",
+        "Dragging box body moves it; dragend updates {x,y}; snapshot() committed",
+        "Single-transformer invariant: selecting A then B → transformer attached to B only",
+        "Deselect detaches: empty-canvas click / Escape-while-selected / tool-switch each clear transformer",
+        "attachBoxTransformer(node, item) exists with frozen signature as internal closure helper",
+        "No regression: arrow endpoint anchors, arrow move, text drag, text selection rect, undo/redo unchanged"
+      ],
+      "evidence": "editor.js lines 54 (transformer, rotateEnabled:false), 57-70 (attachBoxTransformer), 62-68 (scale bake), 69-70 (dragend), 107 (detach), 189-191 (select attach), 279 (Escape deselect)"
+    },
+    "fe-003": {
+      "result": "validated",
+      "acs_verified": [
+        "finish() calls window.__snapdeckEditorModel.projectAnnotations(model) and serializeModel(model); no inline serialize/projection remains",
+        "Projection byte-frozen (arrow-only, arrow+text): annotations array identical to pre-feature (same fields, Math.round, order); box excluded",
+        "Lossless model present: arrow+box → resp.model.version===1 and resp.model.items has arrow+box geometry; items is deep clone",
+        "Annotated PNG gate: box-only emits non-null PNG (gate widened to model.length); empty model emits null",
+        "/report/save unchanged: no model field, byte-identical to pre-feature for same annotations"
+      ],
+      "evidence": "editor.js lines 305-307 (pure module calls), 306 (projectAnnotations), 307 (serializeModel), 313 (gate widened), 316 (model field additive), fe-005 projectAnnotations tests confirm byte-frozen output"
+    },
+    "fe-004": {
+      "result": "validated",
+      "acs_verified": [
+        "Round-trip identity: ANNOTATE with {version:1,items:[arrow,box]} → editor reconstructs at stored geometry; Done re-emits model.items deep-equals input",
+        "openEditor seeds via window.__snapdeckEditorModel.deserializeModel(initialModel); no inline guard in editor.js",
+        "No-model default: ANNOTATE without model opens empty editor (capture behavior unchanged)",
+        "Guard tolerance: model=null/bad-version/non-array items opens empty without console error",
+        "Box geometry fidelity: hydrated box renders at exact stored {x,y,width,height}",
+        "Undo baseline: immediately after hydration, Undo is no-op (hydrated state is baseline)",
+        "Opaque items: unknown w1/w2 subtype fields survive hydration→Done unchanged",
+        "Malformed-item render tolerance: non-finite/wrong-type geometry skipped/coerced at render (RENDER_ITEM_CAP=500, RENDER_TEXT_CAP=10000); deserializeModel stays opaque"
+      ],
+      "evidence": "editor.js line 16 (msg.model passed), line 27 (deserializeModel seed), lines 115-116 (isFiniteNum helper), 99 (RENDER_ITEM_CAP), 115-116 (RENDER_TEXT_CAP), 118-119/154-156/166-170 (render guards)"
+    },
+    "fe-005": {
+      "result": "validated",
+      "acs_verified": [
+        "editor-model.js importable under node with zero side effects; no chrome/window/document/Konva",
+        "projectAnnotations output byte-identical to legacy inline projection (field names, order, Math.round)",
+        "Round-trip identity: deserializeModel(serializeModel(model)) deep-equals original for arrow+box+text",
+        "serializeModel returns {version:1, items:[…]} where items is deep clone (mutation-proof)",
+        "deserializeModel returns [] for null/bad-version/non-array items; never throws",
+        "Opaque items: unknown extra fields survive serialize→deserialize unchanged",
+        "node --test extension/*.test.mjs passes all 56 tests (31 new fe-005 cases + 25 pre-existing)"
+      ],
+      "evidence": "All 56 tests PASS. editor-model.js is pure UMD (lines 13-18). serializeModel (32-34), projectAnnotations (46-62 with box exclusion), deserializeModel (71-78 with envelope-only guard, opaque items). Test file: 31 cases covering round-trip, byte-frozen projection, guard tolerance, opaque pass-through"
+    }
+  },
+  "render_guard_assessment": {
+    "result": "validated",
+    "item_count_cap": "✅ RENDER_ITEM_CAP=500 at editor.js line 115; model.slice() applied at line 99",
+    "text_length_cap": "✅ RENDER_TEXT_CAP=10000 at editor.js line 115; .slice(0, RENDER_TEXT_CAP) applied at line 156",
+    "non_finite_geometry_skip": "✅ isFiniteNum() helper at line 115-116; renderArrow checks x1/y1/x2/y2 (line 118-119); renderText checks x/y (line 154); renderBox checks x/y/width/height (line 166-170)",
+    "deserializeModel_opaque": "✅ deserializeModel (fe-005 lines 71-78) guards envelope only; items pass through opaquely (security-architect ratified forward-compat); no per-field validation"
+  },
+  "no_regression_check": {
+    "result": "validated",
+    "arrow_draw": "✅ Lines 221-237 unchanged in logic; draw pattern mirrored, sub-threshold guard intact",
+    "text_interaction": "✅ Lines 240-242 unchanged; click-place and edit unaffected",
+    "undo_redo": "✅ Lines 270-278 unchanged except Escape deselect (fe-002 AC); snapshot/past/future mechanics intact",
+    "arrow_text_rendering": "✅ renderArrow/renderText unchanged except for render-boundary guards; geometry writes unaffected"
+  },
+  "test_results": {
+    "node_test_run": "✅ PASS: node --test extension/*.test.mjs",
+    "total_tests": 56,
+    "new_tests": 31,
+    "pre_existing_tests": 25,
+    "pass_count": 56,
+    "fail_count": 0
+  },
+  "reasons": [],
+  "evidence": "✅ All 5 stories validated. Frozen contract items 1-5 verified. Per-story ACs all met. 56/56 tests pass. Render-guard implementation complete at boundary (RENDER_ITEM_CAP=500, RENDER_TEXT_CAP=10000, non-finite skips, deserializeModel opaque). No regressions detected. fe-005 pure module zero-dep, node-importable, byte-frozen projection ported exactly. fe-003 finish() wires via pure module, additive model field, widened annotated gate. fe-004 hydration via deserializeModel, render-boundary guards in place. fe-002 single shared transformer, rotateEnabled:false, attachBoxTransformer frozen signature. fe-001 box primitive with top-left normalization, toolbar button, sub-threshold reject."
+}

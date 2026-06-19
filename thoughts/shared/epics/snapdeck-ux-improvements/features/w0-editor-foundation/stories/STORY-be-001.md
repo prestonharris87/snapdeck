@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: backend-engineer
 author_architect: backend-architect
 effort: 1
-status: in-progress
+status: validated
 depends_on: [STORY-fe-003]
 diff_estimate: substantive
 files_modified: [extension/background.js, extension/background.editormodel.test.mjs]

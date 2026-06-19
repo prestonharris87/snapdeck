@@ -117,6 +117,22 @@ the global (no-`tabId`) badge** for that tab. fe-003 leans on this:
   global reset → steady-state-after-flash.
 - `storage.onChanged` fires in the originating SW context, so the same worker that wrote
   the tick repaints. No new permission (`storage.session` already granted).
+- **Lossy-by-design posture (w0 contrarian note, folded in):** the `reportCountChanged`
+  tick is BEST-EFFORT — `storage.session.set` is fire-and-forget/un-awaited (can drop on
+  SW teardown mid-write), `storage.session` wipes on session reset, and ms-resolution `ts`
+  means two same-millisecond count changes can yield a byte-identical payload that doesn't
+  fire `onChanged`. So treat `onChanged` as a **NUDGE, not an authoritative log**: the
+  count is always reconciled from the released `getReport`/`GET_STATE` SSOT at every WAKE
+  POINT (`onActivated`/`onUpdated` + SW cold-start, below); the tick only repaints BETWEEN
+  reconciliations. Same-ms collisions are negligible at human capture pace.
+- **SW cold-start wake point (self-heals a tick dropped during teardown):** add a top-level
+  GUARDED re-derive so the active tab repaints on every SW wake, not only on tab events:
+  `if (chrome.storage?.session && chrome.action?.setIcon) void refreshActiveTab();`. MV3
+  re-evaluates the SW top level on each wake, so this runs on every cold-start; the
+  feature-detect guard keeps module load clean under the frozen no-`storage`/no-`setIcon`
+  mock (condition false → no call → no unhandled rejection; gate-2 criterion #1 holds).
+  This strengthens fe-002's AC7 restart handling — a tick lost mid-teardown self-heals on
+  the next wake instead of waiting for a tab switch.
 
 **▷ Option B (SUPERSEDED) — released-code-free bounded re-derive.** Was the fallback if the
 released edit were declined; the team-lead locked Option A, so this is retained only as
@@ -175,6 +191,11 @@ lagging until the next tab event). Do not implement unless Option A is reversed.
 - [ ] (loop-prevention, BOSS-flagged) the `onChanged` listener does NOT re-derive when a
       fe-002 `resolve:<port>` cache write fires — strict `changes.reportCountChanged`
       key-filter; no self-trigger loop.
+- [ ] (robustness — lossy tick) SW cold-start re-derives the active tab on wake when
+      `storage`/`action.setIcon` exist, and is SKIPPED (no throw / no unhandled rejection)
+      under the frozen no-`storage` mock so gate-2 criterion #1 stays green; the count is
+      always reconciled from the `getReport`/`GET_STATE` SSOT at wake points, never trusted
+      solely from a (lossy) tick.
 - [ ] (AC11) After a kb `✓` flash resets, the badge is NOT stuck on `✓`/`!`; the active
       tab shows its correct per-`tabId` steady state (orange `N` after a successful add,
       green after a cancel), with no flicker.
@@ -231,6 +252,11 @@ Extend **`extension/background.icon-badge.test.mjs`**. Add a capturing
 - `extension/background.icon-badge.test.mjs` — `noSecondOnMessageListener` — module load
   registers exactly ONE `runtime.onMessage` listener (guards the released-suite
   single-capture harness).
+- `extension/background.icon-badge.test.mjs` — `coldStart_rederivesActiveTab_whenApisPresent` —
+  with `storage.session` + `action.setIcon` + `tabs.query` fully stubbed (active tab =
+  resolved localhost:5101, `report:5101` count 2), loading the merged module triggers the
+  top-level guarded re-derive → the active tab is painted orange `'2'` (self-heal-on-wake).
+  Pairs with `moduleLoadsClean_noStorageInMock` (guard false → no call, clean load).
 
 ## Dependencies
 
@@ -266,3 +292,8 @@ The reconcile half (Part 2) depends only on fe-001/fe-002.
   [STORY-fe-001, STORY-fe-002]` (within-feature only) — the w0-emission linkage is PROSE
   in `## Dependencies` (story ids are bare/non-qualified; cross-feature id would collide),
   captured at feature level by feature.md `depends_on: [w0-per-target-reports]`.
+- 2026-06-19 — frontend-architect: folded w0's contrarian "lossy-by-design tick" posture —
+  treat `onChanged` as a nudge, reconcile count from the `getReport`/`GET_STATE` SSOT at
+  wake points; added an explicit GUARDED SW-cold-start re-derive wake point (self-heals a
+  dropped tick; no-op under the frozen mock) + validation + `coldStart_*` unit case. Also
+  reconciled fe-002's restart note to point here.

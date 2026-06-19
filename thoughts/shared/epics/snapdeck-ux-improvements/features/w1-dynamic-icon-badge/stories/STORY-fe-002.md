@@ -163,8 +163,11 @@ posture. (Document as an accepted risk; flagged for Contrarian 5.5.)
   them on wake; the active tab is re-derived on the next tab event, reading `count` from
   IndexedDB via `getReport` and resolution from `chrome.storage.session` (or a fresh
   probe). Chrome retains the last per-`tabId` action state across SW death, so there is
-  no blank-icon gap. (No top-level auto-execute of `refreshActiveTab` — it would emit
-  unhandled rejections inside sibling test contexts that don't stub `action`/`storage`.)
+  no blank-icon gap. (The explicit SW-cold-start re-derive wake point — a top-level
+  feature-detect-GUARDED `if (chrome.storage?.session && chrome.action?.setIcon) void
+  refreshActiveTab()` that self-heals on every wake while staying no-op under the frozen
+  mock — is added in **fe-003** alongside its lossy-tick reconcile posture; fe-002 itself
+  relies on tab events for re-derivation.)
 - **Dev-server note:** Chrome extension, no web dev server. Visual checks go through
   the `browser-tester` teammate against the loaded unpacked extension.
 

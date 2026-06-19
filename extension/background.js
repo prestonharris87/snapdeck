@@ -6,7 +6,7 @@ const CONTROLLER_BASE = 7777;
 const CONTROLLER_STEP = 10;
 const CONTROLLER_TRIES = 40;
 
-// --- IndexedDB (single 'report' record) --------------------------------------
+// --- IndexedDB (per-port 'report:<port>' records) ----------------------------
 function idb() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open("snapdeck", 1);
@@ -31,11 +31,21 @@ async function idbSet(key, val) {
     tx.onerror = () => reject(tx.error);
   });
 }
-async function getReport() {
-  return (await idbGet("report")) || { note: "", screenshots: [] };
+
+// Per-port storage helpers — keyed report:<port> in the kv store.
+// No IndexedDB version bump: the generic kv store is reused as-is.
+function reportKey(port) { return `report:${port}`; }
+const EMPTY_REPORT = () => ({ note: "", screenshots: [] });
+
+async function getReport(port) {
+  if (port == null) return EMPTY_REPORT();              // non-target → empty, no IDB read
+  return (await idbGet(reportKey(port))) || EMPTY_REPORT();
 }
-async function setReport(r) { await idbSet("report", r); }
-async function clearReport() { await setReport({ note: "", screenshots: [] }); }
+async function setReport(port, r) {
+  if (port == null) return;                             // never persist a report:null record
+  await idbSet(reportKey(port), r);
+}
+async function clearReport(port) { await setReport(port, EMPTY_REPORT()); }
 
 // --- helpers -----------------------------------------------------------------
 function portOfUrl(url) {
@@ -49,6 +59,19 @@ function portOfUrl(url) {
 async function activeTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   return tab;
+}
+
+// Resolve the active tab's dev-server port (the current target). Localhost-gated:
+// returns the int port for an http://localhost|127.0.0.1 tab, else null.
+// This is the single source of truth for "which port" — the read path (GET_STATE /
+// SET_NOTE / CLEAR_REPORT) and the write path (addScreenshot / saveReport) both
+// derive their target port from this same predicate (LOW-1 PROMOTE: write-key ≡
+// read-key by construction; deceptive hosts like http://localhost.evil.com → null).
+async function currentTargetPort() {
+  const tab = await activeTab();
+  const url = (tab && tab.url) || "";
+  if (!/^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(url)) return null;
+  return portOfUrl(url);
 }
 
 async function fetchJSON(url, opts, timeoutMs) {
@@ -83,16 +106,75 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true; // async
 });
 
+// --- keyboard shortcut command -----------------------------------------------
+let captureInFlight = false;
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command !== "capture-screenshot") return;
+  // fire-and-forget; result is surfaced via the action badge, not a return value
+  runCaptureCommand();
+});
+
+async function runCaptureCommand() {
+  if (captureInFlight) return;
+  captureInFlight = true;
+  try {
+    // Neutral badge reset at start of every invocation so a prior error badge
+    // never lingers and a cancelled run ends neutral.
+    chrome.action.setBadgeText({ text: "" });
+    chrome.action.setTitle({ title: "Snapdeck" });
+    let result;
+    try {
+      result = await addScreenshot();
+    } catch (e) {
+      // INFO-2: a thrown error (e.g. unexpected chrome.tabs rejection) is also
+      // a non-silent failure — map it onto the same red "!" error badge.
+      chrome.action.setBadgeText({ text: "!" });
+      chrome.action.setBadgeBackgroundColor({ color: "#C0392B" });
+      chrome.action.setTitle({ title: e.message || String(e) });
+      setTimeout(() => {
+        chrome.action.setBadgeText({ text: "" });
+        chrome.action.setTitle({ title: "Snapdeck" });
+      }, 4000);
+      return;
+    }
+    if (result && result.error) {
+      chrome.action.setBadgeText({ text: "!" });
+      chrome.action.setBadgeBackgroundColor({ color: "#C0392B" });
+      chrome.action.setTitle({ title: result.error });
+      setTimeout(() => {
+        chrome.action.setBadgeText({ text: "" });
+        chrome.action.setTitle({ title: "Snapdeck" });
+      }, 4000);
+    } else if (result && result.ok) {
+      chrome.action.setBadgeText({ text: "✓" });
+      chrome.action.setBadgeBackgroundColor({ color: "#1E8E3E" });
+      setTimeout(() => {
+        chrome.action.setBadgeText({ text: "" });
+        chrome.action.setTitle({ title: "Snapdeck" });
+      }, 2000);
+    }
+    // { cancelled: true }: neutral reset already applied at start; no additional
+    // badge signal — the net effect is neutral (satisfies the cancelled-no-false-
+    // signal AC).
+  } finally {
+    captureInFlight = false;
+  }
+}
+
 async function handle(msg) {
   switch (msg.type) {
     case "GET_STATE": {
-      const r = await getReport();
-      return { count: r.screenshots.length, note: r.note || "" };
+      const port = await currentTargetPort();
+      const r = await getReport(port);
+      // port: null for non-target tabs (formalized by STORY-fe-002)
+      return { count: r.screenshots.length, note: r.note || "", port };
     }
     case "SET_NOTE": {
-      const r = await getReport();
+      const port = await currentTargetPort();
+      const r = await getReport(port);
       r.note = msg.note || "";
-      await setReport(r);
+      await setReport(port, r);
       return { ok: true };
     }
     case "ADD_SCREENSHOT":
@@ -100,7 +182,7 @@ async function handle(msg) {
     case "SAVE_REPORT":
       return saveReport();
     case "CLEAR_REPORT":
-      await clearReport();
+      await clearReport(await currentTargetPort());
       return { ok: true };
     default:
       return { error: "unknown message" };
@@ -109,9 +191,13 @@ async function handle(msg) {
 
 async function addScreenshot() {
   const tab = await activeTab();
-  if (!tab || !/^http:\/\/(localhost|127\.0\.0\.1)/.test(tab.url || "")) {
+  // Tight localhost gate — same predicate as currentTargetPort() so write-key ≡
+  // read-key (LOW-1 PROMOTE). Deceptive hosts (http://localhost.evil.com) fail the
+  // (:|/|$) anchor and are rejected here, writing no report:* record.
+  if (!tab || !/^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(tab.url || "")) {
     return { error: "Snapdeck only works on your local dev app (localhost / 127.0.0.1)." };
   }
+  const port = portOfUrl(tab.url);
   let image;
   try {
     image = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
@@ -125,7 +211,7 @@ async function addScreenshot() {
     return { error: "could not open the annotation overlay (reload the page so the content script loads): " + e.message };
   }
   if (!resp || resp.cancelled) return { cancelled: true };
-  const r = await getReport();
+  const r = await getReport(port);
   r.screenshots.push({
     url: resp.meta.url,
     title: resp.meta.title,
@@ -136,18 +222,21 @@ async function addScreenshot() {
     annotations: resp.annotations || [],
     console: resp.console || [],
     network: resp.network || [],
+    model: resp.model ?? null,   // lossless editor model — local store only, NOT in saveReport() whitelist
   });
-  await setReport(r);
+  await setReport(port, r);
   return { ok: true, count: r.screenshots.length };
 }
 
 async function saveReport() {
-  const r = await getReport();
-  if (!r.screenshots.length) return { error: "report is empty — add a screenshot first" };
-  const tab = await activeTab();
-  let browserPort = portOfUrl(tab && tab.url);
-  if (!browserPort) browserPort = portOfUrl(r.screenshots[0].url);
+  // Derive port via the same gated helper as the read path (LOW-1 PROMOTE).
+  // Retires the portOfUrl(screenshots[0].url) fallback — per-port keying must
+  // resolve the key before reading the record; a page-content-derived fallback
+  // is also a Tampering risk (see fe-001 INFO: security positive).
+  const browserPort = await currentTargetPort();
   if (!browserPort) return { error: "could not determine the dev-server port" };
+  const r = await getReport(browserPort);
+  if (!r.screenshots.length) return { error: "report is empty — add a screenshot first" };
 
   const ctrlPort = await findController(browserPort);
   if (!ctrlPort) {
@@ -166,7 +255,7 @@ async function saveReport() {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
   }, 20000);
   if (res.json && res.json.ok) {
-    await clearReport();
+    await clearReport(browserPort);
     return res.json;
   }
   return { error: (res.json && res.json.error) || res.text || `save failed (HTTP ${res.status})` };

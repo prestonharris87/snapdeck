@@ -1,0 +1,26 @@
+{
+  "story_id": "STORY-do-001",
+  "check": "devops-validate",
+  "result": "validated",
+  "reasons": [
+    "Manifest is valid JSON (parse succeeds)",
+    "content/editor-model.js registered at index 2, strictly BEFORE content/editor.js at index 3 in content_scripts[1].js (document_idle isolated-world entry)",
+    "No scope creep: git diff shows exactly one added array element (\"content/editor-model.js\"), no changes to matches/run_at/world/css/commands/permissions/host_permissions/web_accessible_resources",
+    "All deployed files exist on disk (lib/konva.min.js, content/bridge.js, content/editor.js); editor-model.js correctly noted as in-flight per STORY-fe-005 dependency",
+    "Commit message and engineer notes accurately reflect the change and dependency contract"
+  ],
+  "evidence": {
+    "manifest_json_valid": true,
+    "editor_model_index": 2,
+    "editor_js_index": 3,
+    "ordering_correct": true,
+    "files_checked": {
+      "lib/konva.min.js": "present",
+      "content/bridge.js": "present",
+      "content/editor.js": "present",
+      "content/editor-model.js": "missing (expected per STORY-fe-005 in-flight)"
+    },
+    "diff_scope": "extension/manifest.json only (one array element added); STORY-do-001.md updated with History/Engineer Notes sections",
+    "classification": "mechanical-fast-path (single file, single element addition, no scope creep)"
+  }
+}

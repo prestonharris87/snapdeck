@@ -20,6 +20,15 @@
       "128": "icons/icon-128.png"
     }
   },
+  "commands": {
+    "capture-screenshot": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Snapdeck: capture & annotate the current localhost tab"
+    }
+  },
   "content_scripts": [
     {
       "matches": ["http://localhost/*", "http://127.0.0.1/*"],
@@ -29,7 +38,7 @@
     },
     {
       "matches": ["http://localhost/*", "http://127.0.0.1/*"],
-      "js": ["lib/konva.min.js", "content/bridge.js", "content/editor.js"],
+      "js": ["lib/konva.min.js", "content/bridge.js", "content/editor-model.js", "content/editor.js"],
       "css": ["content/overlay.css"],
       "run_at": "document_idle"
     }

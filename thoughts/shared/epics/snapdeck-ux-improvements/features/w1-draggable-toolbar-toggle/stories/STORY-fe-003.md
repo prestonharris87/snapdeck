@@ -323,6 +323,8 @@ attack surface:
 trust boundary.** This is the expected outcome for a local no-network editor-chrome
 toggle.
 
+**PO disposition:** ACCEPT_AS_RECOMMENDATION — Finding 1 (INFO, clean): the visibility toggle is pure local view state — `annShown` is an `openEditor()`-scoped flag persisted nowhere, flipping `annLayer`/`selectLayer`/`cursorLayer` `.visible()` only, with no trust boundary, no store read/write, a plain-text button label (no `innerHTML` sink), and no new permission/message/SW round-trip. Confirmed clean; the export-guard + draw-while-hidden points are robustness/usability (dispositioned at arbitrate), not security. No action.
+
 ## Revisions
 
 ### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)

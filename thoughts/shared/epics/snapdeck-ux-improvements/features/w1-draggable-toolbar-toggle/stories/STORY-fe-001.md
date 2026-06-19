@@ -236,6 +236,9 @@ items are N/A for a local, no-network Chrome-extension editor-chrome module:
   (do-001).
 - **Multi-tenant isolation:** N/A — single-user local tool, no tenancy model.
 
+**PO disposition:** PROMOTE_TO_AC — Finding 1 (LOW, untrusted `chrome.storage.local` toolbar position) is the feature's **sole trust boundary**, so I elevate the parse+clamp guards from a unit-test detail to a mandatory, validator-checkable contract. Wired: firmed the feature.md clamp AC to name the never-throw / coerce-garbage robustness + default-centered fallback, and added a feature.md PO E2E (corrupt/non-finite stored value → safe fallback, no console error) that proves the guards sit on the **live** apply-on-open path (the security-architect's "ensure the guards are on the live path, not just unit-tested in isolation" concern). No new test authored here — the PROMOTE points at this story's existing validate items + named node tests (`parseStoredPos guards stored values`, `clampToViewport coerces non-finite … never NaN`), which already pin the guards; keep BOTH the write (`serializeToolbarPos`) and read (`parseStoredPos`) paths enforcing finiteness so the finite-number guard remains the CSS-injection guard (`editor.js` has no `innerHTML` sink).
+**PO disposition:** ACCEPT_AS_RECOMMENDATION — feature-level STRIDE checklist: recorded as applied-not-skipped; every item is N/A or covered (no HTTP/server surface per be-001, no DB entity per db-001, no permission widening per do-001, the one untrusted input handled by Finding 1). No action.
+
 ## Revisions
 
 ### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)

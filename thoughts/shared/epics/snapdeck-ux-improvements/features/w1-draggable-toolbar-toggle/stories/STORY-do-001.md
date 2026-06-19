@@ -272,6 +272,8 @@ feature could widen the extension's attack surface, so it was checked explicitly
 validate item (devops-validator auto-rejects any unrelated manifest change) is the
 right guard and aligns with the security posture.
 
+**PO disposition:** ACCEPT_AS_RECOMMENDATION — Finding 1 (INFO, clean): the manifest edit widens no privilege — exactly one `js`-array element into the existing `document_idle` (isolated-world) entry, no new `permissions`/`host_permissions`/`web_accessible_resources`/`commands`/`externally_connectable`, `storage` already granted, host-guard untouched, and `__snapdeckEditorChrome` is not page-reachable (isolated world). The `git diff` no-scope-creep validate item is the right enforcement. No action.
+
 ## Revisions
 
 ### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)

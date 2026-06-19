@@ -94,9 +94,15 @@ component-library UI; `frontend_lane: N/A`, `skip_ui_designer: true` — no mock
 - [ ] The toolbar position is **persisted in `chrome.storage.local`** under a
       dedicated UI-chrome key (e.g. `snapdeckEditorToolbarPos: {left, top}`) — NOT
       in the IndexedDB report store and NOT in the editor `model`.
-- [ ] On editor open, `openEditor()` reads the stored position and re-applies it,
-      **clamped to the current viewport**, so re-opening the editor restores the last
-      position and a stored off-screen position cannot strand the toolbar.
+- [ ] On editor open, `openEditor()` reads the stored position and re-applies it
+      **through the node-tested `parseStoredPos` → `clampToViewport` guards, clamped
+      to the current viewport**, so re-opening the editor restores the last position
+      and a stored off-screen position cannot strand the toolbar. A **corrupt /
+      non-finite / wrong-typed stored value is safely coerced or ignored** — it never
+      throws at `openEditor()` and never reaches the `style.left/top` sink as a
+      non-numeric value; on an unparseable value the toolbar falls back to its default
+      centered position. _[security-finalize PROMOTE_TO_AC — fe-001 §Security Review
+      Finding 1: the feature's sole trust boundary.]_
 - [ ] A **toggle control** (a new toolbar button via the existing `btn()` pattern,
       wired through a new `bar.onToggleVisibility` callback) hides and shows the
       annotation layer (`annLayer.visible(false|true)` + redraw).
@@ -162,6 +168,12 @@ console errors.
 the current viewport) and the editor re-opened, the toolbar is **clamped back into
 view** (its on-screen rect is fully within the viewport), so a stale off-screen
 position never strands the toolbar.
+**And** given a **corrupt / non-finite stored value** (e.g. `{left:"x"}`,
+`{left:NaN,top:Infinity}`, or a non-object) seeded into
+`chrome.storage.local.snapdeckEditorToolbarPos`, re-opening the editor **does not
+throw and logs no console error** — the toolbar falls back to its default centered
+position (the live apply-on-open path routes through `parseStoredPos`/`clampToViewport`,
+proving the guards sit on the live path, not just unit-tested in isolation).
 
 > _Implementation note (browser-tester): apply-on-open reads `chrome.storage.local`
 > **asynchronously** (the toolbar paints at its default centered position for one

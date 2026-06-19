@@ -123,6 +123,8 @@ sees they were applied, not skipped:
 `ANNOTATE` / position-never-on-a-backend-surface) are exactly the right
 diff-checkable assertions to confirm the sentinel holds. Disposition: **clean — accept.**
 
+**PO disposition:** ACCEPT_AS_RECOMMENDATION — Finding 1 (INFO, clean): the backend sentinel asserts a genuinely empty diff (no `background.js`, no Python controller change), so the server-side STRIDE checklist (authn/authz, input-validation, CSRF/CORS/rate-limiting, secrets/audit/multi-tenant) is N/A by construction; the frozen `ANNOTATE` contract + localhost host-guard are untouched and the one untrusted input (stored toolbar pos) is guarded content-script-side (fe-001). The 3 validate items (empty backend diff / frozen `ANNOTATE` / position-never-on-a-backend-surface) are the right enforcement. No action.
+
 ## Revisions
 
 ### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)

@@ -151,6 +151,12 @@ Konva stage (never starts an annotation, never changes selection).
 - [ ] On a later `openEditor()`, the toolbar re-applies the stored position,
       **clamped to the viewport** — a deliberately off-screen stored value
       (`left/top` beyond `W/H`) lands fully on-screen.
+- [ ] **Corrupt-value fallback (security — PROMOTE_TO_AC, §Security Review Finding 1):**
+      the apply-on-open path routes the stored value through `parseStoredPos` →
+      `clampToViewport`; a corrupt / non-finite / absent value (`parseStoredPos`
+      returns `null`) falls back to the CSS default-centered position with **no throw
+      and no partial apply** — never write a partially-parsed object to
+      `style.left/top`.
 - [ ] Dragging the handle never starts an annotation (model item count unchanged)
       and never changes the current selection (pointer-capture + `stopPropagation`).
 - [ ] No regression: arrow/text/box/select/undo/redo/done/cancel buttons and the
@@ -303,6 +309,9 @@ per-`prefix:<id>` IndexedDB re-keying lesson — N/A here). Pointer-capture +
 verified note, the toolbar is a DOM sibling of the stage so isolation is structural
 regardless). No re-entrancy, no rate-limit need.
 **Recommendation:** none — recorded as FYI that the DoS axis was considered and is N/A.
+
+**PO disposition:** PROMOTE_TO_AC — Finding 1 (LOW) is the **consumer/live side of the same trust boundary** promoted on fe-001 §SR Finding 1. The story already routes `raw → parseStoredPos → clampToViewport` (never re-implementing clamp math inline) and writes back via `serializeToolbarPos`; I made the live-path safety enforceable by adding a `## How we validate` item ("Corrupt-value fallback") that pins the security-architect's guardrail — on `parseStoredPos` → `null`, fall back to the CSS default-centered position with no throw and **no partial apply**. The matching feature.md AC + PO E2E (corrupt stored value → safe fallback) prove the guards are on the live apply-on-open path.
+**PO disposition:** ACCEPT_AS_RECOMMENDATION — Finding 2 (INFO): the drag-end `chrome.storage.local.set` writes a single fixed key overwritten in place, driven 1:1 by user pointer gestures (no programmatic loop, no async stacking), so the DoS / unbounded-growth axis is genuinely N/A. No action.
 
 ## Revisions
 

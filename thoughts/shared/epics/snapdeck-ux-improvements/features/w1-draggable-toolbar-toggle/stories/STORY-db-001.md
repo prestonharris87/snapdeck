@@ -134,6 +134,8 @@ by construction — recorded so the PO sees they were applied, not skipped:
 / no-`model`-touch / position-only-in-`chrome.storage.local` assertions. Disposition:
 **clean — accept.**
 
+**PO disposition:** ACCEPT_AS_RECOMMENDATION — Finding 1 (INFO, clean): the DB sentinel asserts no server-side DB / migration / schema change (Snapdeck has no server-side DB), so audit-column / soft-delete / injection / multi-tenant / unbounded-growth checks are N/A by construction — toolbar position is a single fixed browser-local `chrome.storage.local` key (FE-owned), not an audited DB row. The 4 validate items pin the no-DDL / no-IndexedDB / no-`model`-touch / position-only assertions. No action.
+
 ## Revisions
 
 ### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)

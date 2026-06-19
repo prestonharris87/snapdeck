@@ -3,7 +3,7 @@ type: feature
 slug: w0-keyboard-shortcuts
 wave: 0
 parent_epic: snapdeck-ux-improvements
-status: planning
+status: planned
 created_at: 2026-06-18T00:00:00Z
 last_run_id: run-20260619-023636-42973
 depends_on: []

@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: approved
+status: validated
 depends_on: [STORY-fe-001]
 diff_estimate: substantive
 files_modified:
@@ -367,6 +367,15 @@ lossless log** (Contrarian Findings 2 & 3, PO ACCEPT_AS_RECOMMENDATION):
 - 2026-06-19 — created by frontend-architect (add-story mode; effort=2, depends
   on STORY-fe-001). Purely additive `chrome.storage.session` report-count
   emission at 3 sites; status left `pending` for team-lead PO arbitrate pass.
+- 2026-06-19 — implemented (commit: 6512a12). Gate: `node --test extension/background*.test.mjs` — 43/43 pass (frozen: reports=17 + shortcuts=8 + editormodel=5; new emit=13). Manual verification deferred — pure service-worker storage.session side-channel with no UI surface; no browser smoke required (no popup/DOM change; zero UI-touching code modified).
+
+## Engineer Notes
+
+- Added `emitReportCountChanged(port, count)` helper immediately after `clearReport` (lines 50-56 in the updated file). The optional-chain `chrome.storage?.session?.set?.(...)` is the key invariant: the 4 frozen vm harnesses have no `storage` key on their chrome mock, so the helper silently no-ops and all 25+ frozen cases stay green.
+- Site 3 (`CLEAR_REPORT` handler) was the trickiest: changed the one-liner `await clearReport(await currentTargetPort())` to capture port into a local first, so we can pass it to both `clearReport` and `emitReportCountChanged`. The helper's null-port guard then absorbs non-target-tab clears without emitting a phantom tick — verified by `clearReport_handler_nonTargetTab_noEmit`.
+- The test file required `toPlain()` (JSON round-trip) before `deepStrictEqual` on any value returned through the vm boundary — the frozen harnesses document this pattern at line 151. I initially missed this on 5 assertions and caught it on first test run (iteration 1 → fixed → clean).
+- `background*.test.mjs` globbed 4 files, not 3 (there is also a `background.editormodel.test.mjs` with 5 cases that the story didn't call out). All pass.
+- No second `chrome.runtime.onMessage.addListener` was added. No frozen files were touched.
 
 ## Contrarian Findings
 
@@ -453,3 +462,12 @@ is recorded, not a request to swap `ts` for a monotonic counter.
 **Recommendation:** acknowledge — fold both into the same story note as Finding 2.
 No code or contract change.
 **PO disposition:** ACCEPT_AS_RECOMMENDATION. Forward-looking couplings only, absorbed by Finding 2's reconciliation; folded into the same `## Consumer note`. Contract is locked — `ts` is not swapped for a monotonic counter; recorded, not actioned.
+
+## Validation
+
+- 2026-06-19 — orchestrator (team-lead) — STORY-fe-003 **validated** (status: in-progress → validated). Two isolated background checkers, both green:
+  - **frontend-validator → validated** — all 10 ACs pass: helper + null-guard (`background.js:53-56`), exact optional-chain write (`:55`), 3 sites (`:239`/`:271`/`:195`), SET_NOTE + saveReport error paths no-emit, single `onMessage` (`:112`), frozen files unchanged. findings: none.
+  - **honesty-check-validator → passed** — frozen suites (`reports`/`shortcuts`/`editormodel`) untouched (0 bytes in diff), no `.skip`/`.todo`/vacuous assertions; group-(a) stubs a real `storage.session.set` capture (emit genuinely exercised), group-(b) proves the optional-chain no-op via `deepStrictEqual` backward-compat checks.
+  - **Gate:** `node --test extension/background*.test.mjs` → **43/43 pass, 0 skipped** (reports 17 + shortcuts 8 + editormodel 5 + new emit 13). Independently re-run by the team-lead.
+  - **Commit:** `6512a12`. Verdict JSONs under `.claude/state/checker-verdicts/feat-w0-per-target-reports/`.
+  - **BOSS-mode freeze:** feature stays `in-progress`/frozen; BOSS's wave-PR merge flips STORY-fe-003 + feature.md → `released` (team-lead does not self-stamp released).

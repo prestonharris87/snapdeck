@@ -39,6 +39,85 @@
       root.appendChild(bar.el);
       (document.body || document.documentElement).appendChild(root);
 
+      // --- toolbar drag + persisted position (fe-002) ---
+      // Consume the pure clamp/serialize/parse helpers registered by do-001.
+      var ec = window.__snapdeckEditorChrome;
+      // _posConverted: true once the default translateX(-50%) centering is replaced by explicit left/top.
+      var _posConverted = false;
+      var _dragActive = false, _dragPtrId = null;
+      var _dragStartX = 0, _dragStartY = 0, _dragBarLeft = 0, _dragBarTop = 0;
+
+      bar.grip.addEventListener("pointerdown", function (e) {
+        e.stopPropagation();
+        bar.grip.setPointerCapture(e.pointerId);
+        _dragPtrId = e.pointerId;
+        // First drag: convert default centering transform (translateX(-50%)) to
+        // explicit fixed-viewport left/top so position arithmetic is unambiguous.
+        if (!_posConverted) {
+          var rect = bar.el.getBoundingClientRect();
+          bar.el.style.left = rect.left + "px";
+          bar.el.style.top = rect.top + "px";
+          bar.el.style.transform = "none";
+          _posConverted = true;
+        }
+        _dragActive = true;
+        _dragStartX = e.clientX;
+        _dragStartY = e.clientY;
+        _dragBarLeft = parseFloat(bar.el.style.left) || 0;
+        _dragBarTop = parseFloat(bar.el.style.top) || 0;
+      });
+
+      bar.grip.addEventListener("pointermove", function (e) {
+        if (!_dragActive || e.pointerId !== _dragPtrId) return;
+        e.stopPropagation();
+        bar.el.style.left = (_dragBarLeft + (e.clientX - _dragStartX)) + "px";
+        bar.el.style.top  = (_dragBarTop  + (e.clientY - _dragStartY)) + "px";
+      });
+
+      bar.grip.addEventListener("pointerup", function (e) {
+        if (!_dragActive || e.pointerId !== _dragPtrId) return;
+        e.stopPropagation();
+        _dragActive = false;
+        _dragPtrId = null;
+        // Clamp final position to viewport, then persist.
+        var finalLeft = parseFloat(bar.el.style.left) || 0;
+        var finalTop  = parseFloat(bar.el.style.top)  || 0;
+        var clamped = ec.clampToViewport(
+          { left: finalLeft, top: finalTop },
+          { vw: W, vh: H, tw: bar.el.offsetWidth, th: bar.el.offsetHeight }
+        );
+        bar.el.style.left = clamped.left + "px";
+        bar.el.style.top  = clamped.top  + "px";
+        // serializeToolbarPos returns null for non-finite inputs — safe no-op if that somehow occurs.
+        var toStore = ec.serializeToolbarPos(clamped);
+        if (toStore) { chrome.storage.local.set({ snapdeckEditorToolbarPos: toStore }); }
+      });
+
+      bar.grip.addEventListener("pointercancel", function () {
+        // OS-level gesture interrupt (e.g. system gesture) — abort drag cleanly.
+        _dragActive = false;
+        _dragPtrId = null;
+      });
+
+      // Apply stored position on open (async). Trust boundary: raw value from
+      // chrome.storage.local is always routed through parseStoredPos → clampToViewport
+      // before any style write. On null / corrupt / non-finite → no apply; CSS default
+      // centering stays. Never throws, never writes a non-numeric value to style.left/top.
+      chrome.storage.local.get("snapdeckEditorToolbarPos", function (result) {
+        var raw = result && result.snapdeckEditorToolbarPos;
+        var pos = ec.parseStoredPos(raw); // → {left, top} | null; never throws
+        if (pos) {
+          var clamped = ec.clampToViewport(
+            pos,
+            { vw: W, vh: H, tw: bar.el.offsetWidth, th: bar.el.offsetHeight }
+          );
+          bar.el.style.left = clamped.left + "px";
+          bar.el.style.top  = clamped.top  + "px";
+          bar.el.style.transform = "none";
+          _posConverted = true;
+        }
+      });
+
       // --- Konva ---
       var Konva = window.Konva;
       var stage = new Konva.Stage({ container: stageDiv, width: W, height: H });
@@ -334,6 +413,13 @@
     var el = document.createElement("div");
     el.className = "snapdeck-toolbar";
     function btn(label, title) { var b = document.createElement("button"); b.textContent = label; b.title = title || label; el.appendChild(b); return b; }
+    // Grab handle — first child (fe-002); CSS-painted grip dots, pointer-capture drag target.
+    // No emoji / symbol-icon char / inline SVG — affordance is CSS radial-gradient dots.
+    var grip = document.createElement("div");
+    grip.className = "snapdeck-grip";
+    grip.setAttribute("aria-label", "Drag to move toolbar");
+    grip.title = "Drag to move the toolbar";
+    el.appendChild(grip);
     var arrow = btn("➤ Arrow", "Draw a red arrow (drag)");
     var text = btn("T Text", "Add a text comment (click)");
     var box = btn("Box", "Draw a box (drag)"); // plain-text label per fe-001 (no emoji/inline SVG)
@@ -344,7 +430,7 @@
     var done = btn("✓ Done", "Save this screenshot to the report"); done.className = "snapdeck-primary";
     var cancel = btn("✕ Cancel");
     var api = {
-      el: el, onTool: null, onUndo: null, onRedo: null, onDone: null, onCancel: null,
+      el: el, grip: grip, onTool: null, onUndo: null, onRedo: null, onDone: null, onCancel: null,
       setTool: function (t) {
         [["arrow", arrow], ["text", text], ["box", box], ["select", select]].forEach(function (p) {
           p[1].classList.toggle("snapdeck-active", p[0] === t);

@@ -260,9 +260,17 @@ Implemented in the same commit as fe-001 and fe-002.
 `renderBox` which uses the looser `tool==="select"`. This is **intentional by PO arbitration** and
 documented in fe-003 revisions. The text pattern is the correct contract `w2-rectangle-tool` adopts.
 
-**Smoke verification:** `dev-server.txt` empty — no dev server running. Transformer attach, resize-bake,
-re-fit, single/double-click, round-trip are deferred to browser-tester E2E gate.
-Manual verification deferred — dev server not available at implementation time.
+**Smoke verification (bt, 2026-06-19):**
+- Scenarios 1–3 + 5 all passed: drag-to-draw ✓, round-trip ✓, select/transformer/resize ✓, hostile model ✓
+- Scenario 4 (double-click re-edit) initially FAILED — root cause: Konva 9.3.22 dblclick detection
+  compares the shape ref stored at click #1 pointerup (`r`) with `getIntersection()` at click #2 (`l`).
+  Since `render()` is called synchronously in the `click tap` handler, `annLayer.destroyChildren()`
+  creates a new Group object between the two clicks → `r !== l` → `pointerdblclick` never fires.
+- **Fix applied (commit 1fcf947):** skip `render()` in `click tap` when `selectedId === item.id`
+  (no state change, no re-render needed). Both clicks of the dblclick then hit the same Group object
+  → Konva fires `pointerdblclick` → `editText` opens. UX: single-click selects (renders once on
+  first selection), subsequent dblclick on the selected item opens the editor. Matches the AC.
+- bt re-verification of scenario 4 requested after commit 1fcf947.
 
 ## Contrarian Findings
 

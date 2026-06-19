@@ -176,3 +176,18 @@ none — pure additive extension of the editor's model/render/draw/toolbar; no A
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=2, depends on none)
+
+## Security Review
+
+> security-architect · STRIDE pass · 2026-06-19 · highest severity in this story: **INFO**
+
+**INFO — clean, no new attack surface.** Pure additive draw tool in the isolated-world content script:
+a new `{type:"box"}` model item + `renderBox()` (`Konva.Rect`, canvas — no `innerHTML`) + a Box toolbar
+button. No new permission, host, message type, or network call; the `box` item is **model-only** and
+never enters the lossy projection or `/report/save` (so no upstream-disclosure delta). The
+sub-threshold-drag reject (`width > 4 && height > 4`, mirroring the arrow `>8` guard) is a small,
+welcome robustness guard against stray zero-size nodes. The plain-text label (no inline `<svg>`, no
+glyph) avoids any markup-injection footgun in the toolbar.
+
+**Spoofing / Tampering / Repudiation / DoS / EoP: N/A** — single-user local editor interaction, no
+trust boundary crossed.

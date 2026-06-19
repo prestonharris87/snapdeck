@@ -195,3 +195,23 @@ PNG: gate `annotated` on `model.length` (provably byte-identical for the frozen 
 
 - 2026-06-19 — created by frontend-architect (effort=2)
 - 2026-06-19 — revised by frontend-architect for BOSS HYBRID ruling: consume pure module (STORY-fe-005) + add node:test unit lane; depends_on now [STORY-fe-001, STORY-fe-005, STORY-do-001]
+
+## Security Review
+
+> security-architect · STRIDE pass · 2026-06-19 · highest severity in this story: **INFO**
+
+**INFO — Information disclosure (producer side): byte-freeze + upstream exclusion verified.** This is the
+producer of the FE→BE wire and the point where the "what leaves the editor" envelope is set. Two
+properties are correct and asserted: (1) the lossy `annotations` projection routes through
+`projectAnnotations(model)` and stays **byte-frozen** (box excluded, `Math.round` and field order
+preserved); (2) the additive `model` is the **only** new key on the resolve payload and does **not**
+reach `/report/save`. The strengthened assertion-grade E2E (`Object.keys(resolvePayload)` delta of
+exactly `"model"` + the 9-field `/report/save` key-set check) locks this so no annotation geometry/text
+silently widens the upstream payload. Good — this is exactly the disclosure boundary to nail down.
+
+**No new trust boundary.** `finish()` calls the pure module via the isolated-world global
+`window.__snapdeckEditorModel` (same-world, not page-reachable); `serializeModel`'s deep-clone emits
+plain JSON only (no Konva nodes/functions). The `annotated`-gate widening (`annotations.length` →
+`model.length`) is a render/output decision with no security surface.
+
+**Spoofing / Tampering / Repudiation / DoS / EoP: N/A** for this serialization-wiring story.

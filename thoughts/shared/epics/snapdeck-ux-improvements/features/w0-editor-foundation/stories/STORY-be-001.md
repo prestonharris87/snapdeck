@@ -289,3 +289,37 @@ Established via SendMessage rounds with `frontend-architect` and `database-archi
   `getReport`/`setReport`; keyboard-shortcuts adds `onCommand`; this story edits the `addScreenshot()` push
   literal) and the distinct `*.test.mjs` filename — no collision. No story-content change. **Promoted
   `pending → approved`.**
+
+## Security Review
+
+> security-architect · STRIDE pass · 2026-06-19 · highest severity in this story: **INFO**
+
+**INFO — Information disclosure: the upstream exclusion is the right call and is well-locked.** The
+load-bearing security property of this story is that the new lossless `model` stays **local only** — it
+is stored at `screenshots[].model` in the extension's own IndexedDB but is **excluded from the
+`/report/save` upstream payload** (the `saveReport()` whitelist at `background.js:159-163` is untouched).
+This is enforced two ways and tested:
+- `saveReport_omitsModelFromUpstreamPayload_*` asserts the upstream `screenshots[0]` key set is
+  **exactly** the 9 frozen projection fields — a strong, exact-match lock, not just a "no `model`" check.
+- STORY-fe-003 cross-checks the same byte-freeze on the producer side.
+No **new class** of data is shipped or even newly persisted: `text` content was already stored locally
+in `annotations` (`{x,y,text}`); the `model` carries the same text plus arrow/box geometry, still
+local. Net effect is privacy-neutral-to-positive (nothing additional leaves the machine).
+
+**INFO — Tampering/EoP: storage path and guards unchanged.** Stored **verbatim/opaque** via the existing
+structured-clone `setReport()` path with no field whitelist (correct — w1/w2 subtype fields must
+survive). `resp.model ?? null` is a sound forward-compat default. The story adds/relaxes **no** guard:
+the `localhost`/`127.0.0.1` URL guard at `background.js:112` is untouched and the loopback-only
+(`127.0.0.1`, no-auth-by-design) controller is unchanged. `addScreenshot()`/`saveReport()` stay
+zero-arg.
+
+**INFO — DoS (accept-risk, no action): unbounded opaque value.** Because `model` is stored opaquely with
+no size/item-count bound and `unlimitedStorage` is granted, a pathological model could grow the local
+record. Item count is **human-bounded** in w0 (annotations are hand-drawn), and this is a single-user
+local tool, so this is an accept-risk INFO — **no STORY-sec warranted** (consistent with the per-key
+IndexedDB growth disposition in prior reviews). If w2-screenshot-gallery later imports models from an
+external source, revisit a bound then.
+
+**Spoofing / Repudiation: N/A.** `ADD_SCREENSHOT` is same-extension `chrome.runtime` messaging (no
+`externally_connectable`; not web-reachable); no audit-trail surface exists on this client-side ephemeral
+store (no entity table → the audit-columns checklist item does not apply here).

@@ -180,3 +180,28 @@ STORY-do-001 (which `depends_on` this story — the file must exist before it is
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=2, depends on STORY-fe-001; pure-logic core for the BOSS HYBRID node:test lane)
+
+## Security Review
+
+> security-architect · STRIDE pass · 2026-06-19 · highest severity in this story: **INFO**
+
+**INFO — the deserialize guard scope is correct; document the boundary split.** `deserializeModel`'s
+two-line envelope guard (`payload && payload.version === 1 && Array.isArray(payload.items)` → else `[]`,
+never throws) is the **right** check for this module and is the load-bearing reason hydration
+(STORY-fe-004) can't be crashed by a malformed *envelope* (`null` / missing version / non-array). The
+deliberate **opaque pass-through of item contents** (no per-field validation) is also correct — it is
+the ratified forward-compat contract that lets w1/w2 box-subtype fields survive. Do **not** add
+per-item validation here; that would break the contract.
+
+The corollary is just that this module does **not** (and should not) defend against
+*structurally-valid-but-numerically-hostile* items — that robustness belongs at the Konva **render
+boundary**, tracked as the LOW in STORY-fe-004's Security Review. Suggest a one-line code comment in
+`deserializeModel` stating the intentional split ("envelope validated here; item-field sanity is a
+render-layer concern — items pass through opaquely for w1/w2 forward-compat") so a future maintainer
+doesn't "harden" this function and silently break the opaque contract.
+
+**Spoofing / Tampering / Info-disclosure / EoP: N/A.** Pure, side-effect-free module — no `chrome`,
+`window`, `document`, `Konva`, network, or filesystem access at load or call time (this is the story's
+own purity contract). It exposes no new attack surface; it is a deterministic data transform over plain
+JSON. `serializeModel`'s deep-clone (`JSON.parse(JSON.stringify(...))`) also means the emitted payload
+can't carry functions/prototypes — a good implicit sanitization on the *serialize* side.

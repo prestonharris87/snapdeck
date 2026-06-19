@@ -157,3 +157,52 @@ transition, `frontend_lane: N/A`, so no reduced-motion-affected animation.
 
 - 2026-06-19 — created by frontend-architect (effort=2)
 - 2026-06-19 — revised by frontend-architect for BOSS HYBRID ruling: hydrate via pure deserializeModel (STORY-fe-005); depends_on now [STORY-fe-001, STORY-fe-003, STORY-fe-005, STORY-do-001, STORY-be-001]
+
+## Security Review
+
+> security-architect · STRIDE pass · 2026-06-19 · highest severity in this story: **LOW**
+
+**Trust-boundary framing (why this is not HIGH).** `deserializeModel(msg.model)` consumes the
+ANNOTATE `model` payload, which in w0 originates from `screenshots[].model` in the extension's **own**
+service-worker IndexedDB — written by the extension's own `serializeModel` (STORY-fe-003), not by any
+page. Three facts make this a first-party path, not an untrusted-input boundary:
+- The manifest declares **no `externally_connectable`**, so no web page can `chrome.runtime.sendMessage`
+  the editor — ANNOTATE only arrives from the extension's background worker (same-extension origin,
+  Chrome-enforced). **Spoofing of the `model` payload: N/A.**
+- The extension's IndexedDB (`snapdeck`/`kv`, service-worker origin) is **isolated from page-origin
+  storage** — a malicious `http://localhost` page cannot write the `model` the editor later hydrates.
+- Text renders via **`Konva.Text` (canvas)** and is edited through a textarea `.value`, never
+  `innerHTML` — so a `text` item carrying markup is **not a DOM-XSS vector** (Info-disclosure /
+  Tampering via script injection: N/A). *Confirmed against `editor.js:111-128`.*
+
+**LOW — Tampering/DoS (defense-in-depth, not exploitable today): item-level robustness on hydration.**
+`deserializeModel` guards the **envelope** (`version===1 && Array.isArray(items)`) and — correctly, by
+the ratified forward-compat contract — passes **items opaquely** (so w1/w2 subtype fields survive). But
+that means a *structurally-valid* payload (`version:1`, array `items`) whose item fields are numerically
+hostile — `width: 1e308`, `x: NaN`, `height: "120"`, a multi-megabyte `text` string, or thousands of
+items — flows straight into `Konva.Rect`/`Konva.Text`/`Konva.Arrow` at the render boundary
+(`editor.js:74-81`) with no clamp, type-check, or count bound. The current "guard tolerance" AC only
+exercises the **envelope** failures (`null` / bad-version / non-array → `[]`). It does not cover a
+well-formed envelope with garbage *items*.
+
+Today this is non-exploitable (first-party source, single-user local tool). It matters **forward**:
+**w2-screenshot-gallery** will let a dev re-open arbitrary *stored* screenshots, so a model that was
+corrupted on disk (manual edit, partial write, a future buggy producer) re-enters Konva through this
+exact path — and a thrown render would break the editor for that screenshot.
+
+**Recommendation (do NOT tighten `deserializeModel` — that would break the opaque forward-compat
+contract; harden at the *render boundary* instead):** add one AC to "How we validate it was done
+correctly":
+- [ ] **Malformed-item tolerance:** hydrating a `version:1` payload whose items carry non-finite or
+      wrong-typed geometry (`NaN`/`Infinity`/string `width`) renders **without throwing or emitting a
+      console error** — bad items are skipped or coerced at the render dispatch (`render()` /
+      `renderBox`/`renderArrow`), keeping `deserializeModel`'s opaque pass-through unchanged.
+
+Disposition is the PO's call in Phase 7.5: either (a) accept-risk now + carry this AC into
+w2-screenshot-gallery where untrusted-on-disk models are actually re-opened, or (b) add the small
+render-boundary guard now (cheap, ~5 lines, no contract impact). **This is a LOW — it does not gate
+delivery of w0.**
+
+**Repudiation / EoP / Info-disclosure:** N/A here — no audit-trail surface (client-side ephemeral
+store), no new permission/host, and the hydrated geometry never leaves the machine (the `model` is
+excluded from `/report/save`, enforced by STORY-fe-003 / STORY-be-001).

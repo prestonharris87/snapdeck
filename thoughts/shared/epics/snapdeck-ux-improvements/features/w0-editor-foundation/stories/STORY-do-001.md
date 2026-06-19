@@ -154,3 +154,26 @@ existing file under `extension/`. No network, no browser — pure file I/O, fits
   match the story schema + siblings, added `created_at`/`last_run_id`/`defects: []`. **Converted "How we
   validate" prose bullets to a `- [ ]` checklist** and added an explicit JSON-valid + path-exists +
   load-order check item. **Promoted `pending → approved`.**
+
+## Security Review
+
+> security-architect · STRIDE pass · 2026-06-19 · highest severity in this story: **INFO**
+
+**INFO — clean, no expanded attack surface (EoP review).** Verified against the actual
+`extension/manifest.json`: the new `content/editor-model.js` is added to the **second**
+`content_scripts` entry — the `document_idle`, **isolated-world** one (default world; NOT the MAIN-world
+`capture.js` entry). Consequences that keep the surface flat:
+- The `__snapdeckEditorModel` global is set on the **isolated-world** `globalThis`, so it is **not
+  reachable from page JS** (the page's `window` is a separate world). A malicious `http://localhost`
+  page can neither read nor overwrite the model transforms. *Confirmed: the entry has no `"world":
+  "MAIN"`, unlike the `capture.js` entry.*
+- The `matches` stay exactly `http://localhost/*` + `http://127.0.0.1/*` — the **localhost-only guard is
+  not weakened**. No new host, no `<all_urls>`, no `https`.
+- **No new permission, no `host_permissions` delta, no `web_accessible_resources`, no
+  `externally_connectable`, no `commands` change** — the story's own "No scope creep" check
+  (`git diff` shows exactly one added array element) already locks this; devops-validator auto-rejects
+  any unrelated manifest change. This also avoids Chrome's auto-update permission-disable that a
+  permission widening would trigger.
+
+**Recommendation:** none beyond what's already specified. Keep the "exactly one added array element"
+diff assertion as the gate. Spoofing/Tampering/Repudiation/DoS: N/A for a load-order manifest edit.

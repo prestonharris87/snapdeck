@@ -191,3 +191,18 @@ STORY-fe-001 (needs the `box` model item + `renderBox` to attach select/resize t
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=3, depends on STORY-fe-001)
+
+## Security Review
+
+> security-architect · STRIDE pass · 2026-06-19 · highest severity in this story: **INFO**
+
+**INFO — clean, no new attack surface.** Single shared `Konva.Transformer` + select-mode interaction, all
+within the isolated-world editor. No new permission/host/message/network surface. One robustness positive
+worth noting: the `transformend` write-back clamps geometry with `Math.max(1, …)` on `width`/`height`,
+so a resize can't persist a zero/negative dimension that would later feed the round-trip — this is the
+kind of render-boundary sanity the STORY-fe-004 LOW asks for on the *hydration* side. The
+Escape→deselect-if-selected-else-finish change is UI-only with no security impact.
+
+**Spoofing / Tampering / Repudiation / DoS / EoP: N/A** — local editor interaction, no trust boundary
+crossed; the `rotateEnabled:false`/single-transformer invariants are correctness, not security,
+properties.

@@ -219,3 +219,60 @@ Established via peer messaging this run (mirrored to
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=2, depends on STORY-do-001 + STORY-fe-002; consumes window.__snapdeckEditorChrome)
+
+## Contrarian Findings
+
+> Phase 5.5 stress-test (contrarian-architect). The export guard and cancel-path
+> were independently verified against RELEASED `editor.js` and found **sound** —
+> see note at the end of this block. Two `info`-level observations follow; neither
+> blocks arbitration.
+
+### Finding 1 — "Raw screenshot underneath" omits `cursorLayer`: the toggle hides 2 of 4 layers
+
+**Severity:** info
+**Mechanism:** The feature's mental model — restated in `feature.md` AC ("the raw
+captured screenshot (`bgLayer`) is visible with **zero annotations drawn over it**")
+and this story's handler — is "hide `annLayer` + `selectLayer` ⇒ raw capture
+underneath." But the editor stacks **four** Konva layers (verified `editor.js:45-49`):
+`bgLayer` (screenshot), `annLayer`, `selectLayer`, and **`cursorLayer`**. The toggle
+flips only `annLayer`/`selectLayer`. `cursorLayer` carries a synthetic arrow-pointer
+polygon drawn **once at open** at the last mouse position (`drawCursor(...)`,
+verified `editor.js:48,82`, `listening:false`), and the toggle never hides it — so
+when the dev hides annotations "to inspect the raw screenshot," a small static cursor
+glyph **remains painted over the capture**. The E2E asserts "zero *annotations*"
+(model-item / `annLayer`-children count), which still passes, so this is not an AC
+failure — but the shared assumption that hiding the layer yields a pristine raw
+capture is slightly false. This is the classic "everyone pictured two layers; there
+are four" miss.
+**Recommendation:** acknowledge. If pixel-perfect raw inspection is ever a real
+need, hide `cursorLayer` alongside `annLayer`/`selectLayer` in the flip (and restore
+in the export guard for symmetry). Not required by the current ACs — record as a
+known, conscious scope boundary.
+
+### Finding 2 — Draw/undo-while-hidden is a quiet footgun (acknowledged, surfaced for PO visibility)
+
+**Severity:** info
+**Mechanism:** This story explicitly keeps drawing tools live while annotations are
+hidden ("a new annotation drawn while hidden renders into the hidden layer and
+appears on re-show (acceptable)"). Verified that the consequence is real and slightly
+larger than the story's one-liner: the stage draw handlers write to `model` and call
+`snapshot()` (the sole undo push, `editor.js:90`) regardless of `annLayer.visible()`,
+and `render()` never gates on visibility (verified `editor.js:97-110`). So a dev who
+hid annotations to inspect the capture and then drags/clicks **creates an invisible
+annotation AND a new undo step** — both surfacing unexpectedly on re-show. Logically
+consistent (visibility is orthogonal to model/history — the architect reasoned about
+this correctly), but a mild surprise for a "view-only inspect" affordance.
+**Recommendation:** acknowledge as the conscious team position (the story already
+calls disabling-tools-while-hidden out of scope). Surfaced only so PO arbitrates the
+footgun knowingly, not as an unflagged assumption. No story change required.
+
+> **Verified sound (no finding) — export guard + cancel path.** The candidate
+> "Done-while-hidden ⇒ blank-annotation PNG" risk is correctly mitigated:
+> `finish()`'s **cancel branch returns before any rasterize** (verified
+> `editor.js:295-298` — no `toDataURL` on cancel/Escape), so the guard is needed on
+> the **Done path only**, which is exactly where this story places it (set
+> `annLayer.visible(true)` before `stage.toDataURL` at `editor.js:301`). In the
+> never-toggled common path the guard is a no-op (layer already visible) ⇒
+> non-regressive to released w0 `finish()`. The `annotated` gate at `editor.js:310`
+> (`losslessModel.items.length ? annotated : null`) is untouched. Confirmed
+> correct.

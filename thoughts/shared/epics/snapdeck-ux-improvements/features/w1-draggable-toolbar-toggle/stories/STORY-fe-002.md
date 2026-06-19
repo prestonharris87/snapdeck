@@ -219,3 +219,43 @@ Established via peer messaging this run (mirrored to
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=3, depends on STORY-do-001; consumes window.__snapdeckEditorChrome)
+
+## Contrarian Findings
+
+> Phase 5.5 stress-test (contrarian-architect). The first-drag
+> `translateX(-50%)→left/top` conversion and the viewport clamp were independently
+> verified and found correct — see note. One `info`-level observation follows.
+
+### Finding 1 — Async apply-on-open paints centered → jumps to stored position (acknowledged; also an E2E-flake seam)
+
+**Severity:** info
+**Mechanism:** `openEditor()` appends `bar.el` synchronously (verified
+`editor.js:38-40`), so the toolbar **paints at its CSS default centered position**
+first; the stored position is only applied later, inside the **async**
+`chrome.storage.local.get` callback. On every editor open with a saved non-center
+position the dev sees a one-frame center→stored "jump." The story acknowledges this
+("a brief default-position frame … is acceptable for this dev tool"), so it is not a
+defect. Two things worth surfacing for conscious sign-off: (a) the jump is *every*
+open, not a one-time cost — if it reads as jarring, the `pre-hide-until-positioned`
+mitigation the story mentions (start `bar.el` hidden, reveal in the get-callback) is
+the cheap fix; (b) the dependent E2E ("toolbar position persists and is restored
+(clamped)") **must await the async apply** before asserting computed `left/top` —
+asserting on the synchronous post-append frame would read the default-center value
+and flake. That sequencing is the browser-tester's to own, but it originates in this
+story's async design.
+**Recommendation:** acknowledge the per-open flicker as accepted; flag the
+await-the-storage-read requirement to the browser-tester so the persistence E2E
+isn't timing-flaky. No story change required.
+
+> **Verified sound (no finding) — transform conversion + clamp.** First-drag
+> conversion reads `bar.el.getBoundingClientRect()` and writes that `left/top` with
+> `transform:"none"`; for a `position:fixed` element the rect is already in
+> viewport coordinates, so the element does **not** jump on grab — correct. Clamp on
+> open uses `W/H` captured at `editor.js:28` + live `offsetWidth/offsetHeight`
+> (valid post-append) and routes through the node-tested
+> `clampToViewport` — a stored off-screen value lands on-screen per AC. Pointer
+> isolation is structurally guaranteed regardless of `stopPropagation`: the toolbar
+> is a **DOM sibling** of `.snapdeck-stage` (verified `editor.js:33-40`), so grip
+> pointer events bubble to `root`/`document`, never *across* into the Konva stage
+> container. The `stopPropagation`/pointer-capture is harmless belt-and-suspenders,
+> not the load-bearing isolation. Confirmed correct.

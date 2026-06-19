@@ -141,3 +141,22 @@ depend on; it depends on nothing itself.
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=2, depends on none; greenfield pure module + node test file)
+
+## Contrarian Findings
+
+### Finding 1 — This file owns the test suite that STORY-do-001's manifest-order guard wants to live in
+
+**Severity:** concern (cross-ref STORY-do-001 Finding 1)
+**Mechanism:** STORY-do-001 commits to a `node --test` assertion that
+`index(editor-model) < index(editor-chrome) < index(editor)` in the manifest, and
+states it "contributes the manifest-shape assertions" to **this story's**
+`extension/editor.chrome.test.mjs`. But this story's `## Unit tests` enumerates nine
+cases (clamp / serialize / parse / visibility) with **no manifest-order case**, and
+do-001's `files_modified` does not declare the test file — so the load-order
+regression guard (on a seam do-001 itself calls "load-bearing, not cosmetic") is
+owned by neither story as written. See STORY-do-001 → Contrarian Findings → Finding
+1 for the full mechanism and failure modes.
+**Recommendation:** the cleanest resolution at arbitration is to add the
+manifest-order + path-exists assertions to **this story's** test list (FE owns the
+file), and have do-001 reference rather than "contribute to" it. Decide explicitly;
+do not leave it implicit.

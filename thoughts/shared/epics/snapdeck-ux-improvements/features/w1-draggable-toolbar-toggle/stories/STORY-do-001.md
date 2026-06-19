@@ -202,3 +202,36 @@ this story contributes the manifest-shape assertions to it, not a second suite.)
   `window.__snapdeckEditorChrome` (parallel to `__snapdeckEditorModel` at `editor.js:86`). FE
   will set their two editor.js consumer stories' `depends_on` to **STORY-do-001**. The `storage`
   permission is already present, so `chrome.storage.local` persistence needs no manifest change.
+
+## Contrarian Findings
+
+### Finding 1 — The manifest load-order regression guard has no clear owner and may be silently dropped
+
+**Severity:** concern
+**Mechanism:** This story twice calls the load order "load-bearing, not cosmetic"
+and its `## Unit tests` section commits to a `node --test` assertion of
+`index(editor-model) < index(editor-chrome) < index(editor)` — but it places that
+assertion **inside the FE-owned `extension/editor.chrome.test.mjs`** ("this story
+contributes the manifest-shape assertions to it"), while this story's frontmatter
+`files_modified` lists **only `extension/manifest.json`** (the test file is not
+declared). Cross-checking the producer: STORY-fe-001's test spec enumerates nine
+cases (clamp / serialize / parse / visibility) and **none** assert manifest order.
+So the ordering guard is owned by neither file as written. Two concrete failure
+modes at implement time: (a) the devops-engineer edits `editor.chrome.test.mjs` to
+add it — an **undeclared cross-domain file edit** the devops-validator may reject (it
+"auto-rejects any unrelated manifest change" and an FE-test edit is outside this
+story's declared surface); or (b) everyone assumes the other story owns it and the
+assertion is **never written** — leaving no automated guard. The latter is the real
+risk: a future content-script reorder (or a dropped `editor-chrome.js` entry) would
+make `window.__snapdeckEditorChrome` `undefined`, and since fe-002/fe-003 consume it
+at `openEditor()`-time, the **editor's drag + toggle handlers throw at runtime with
+no test catching the regression**. The feature ships fine *today* either way (the
+runtime works once the manifest is correct); the gap is the missing regression net
+on a seam the story itself flags as load-bearing.
+**Recommendation:** acknowledge + assign one owner at arbitration. Cheapest fix:
+add the `index(editor-model) < index(editor-chrome) < index(editor)` + path-exists
+case to **STORY-fe-001's** test list (FE owns `editor.chrome.test.mjs`), and have
+this story reference it rather than "contribute" to a file it doesn't declare.
+Alternatively, declare `extension/editor.chrome.test.mjs` in this story's
+`files_modified` so the devops-validator expects the edit. Pick one explicitly — do
+not leave the guard's ownership implicit.

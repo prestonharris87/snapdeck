@@ -20,6 +20,15 @@
       "128": "icons/icon-128.png"
     }
   },
+  "commands": {
+    "capture-screenshot": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
+      "description": "Snapdeck: capture & annotate the current localhost tab"
+    }
+  },
   "content_scripts": [
     {
       "matches": ["http://localhost/*", "http://127.0.0.1/*"],

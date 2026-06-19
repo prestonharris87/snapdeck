@@ -83,6 +83,62 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true; // async
 });
 
+// --- keyboard shortcut command -----------------------------------------------
+let captureInFlight = false;
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command !== "capture-screenshot") return;
+  // fire-and-forget; result is surfaced via the action badge, not a return value
+  runCaptureCommand();
+});
+
+async function runCaptureCommand() {
+  if (captureInFlight) return;
+  captureInFlight = true;
+  try {
+    // Neutral badge reset at start of every invocation so a prior error badge
+    // never lingers and a cancelled run ends neutral.
+    chrome.action.setBadgeText({ text: "" });
+    chrome.action.setTitle({ title: "Snapdeck" });
+    let result;
+    try {
+      result = await addScreenshot();
+    } catch (e) {
+      // INFO-2: a thrown error (e.g. unexpected chrome.tabs rejection) is also
+      // a non-silent failure — map it onto the same red "!" error badge.
+      chrome.action.setBadgeText({ text: "!" });
+      chrome.action.setBadgeBackgroundColor({ color: "#C0392B" });
+      chrome.action.setTitle({ title: e.message || String(e) });
+      setTimeout(() => {
+        chrome.action.setBadgeText({ text: "" });
+        chrome.action.setTitle({ title: "Snapdeck" });
+      }, 4000);
+      return;
+    }
+    if (result && result.error) {
+      chrome.action.setBadgeText({ text: "!" });
+      chrome.action.setBadgeBackgroundColor({ color: "#C0392B" });
+      chrome.action.setTitle({ title: result.error });
+      setTimeout(() => {
+        chrome.action.setBadgeText({ text: "" });
+        chrome.action.setTitle({ title: "Snapdeck" });
+      }, 4000);
+    } else if (result && result.ok) {
+      chrome.action.setBadgeText({ text: "✓" });
+      chrome.action.setBadgeBackgroundColor({ color: "#1E8E3E" });
+      setTimeout(() => {
+        chrome.action.setBadgeText({ text: "" });
+        chrome.action.setTitle({ title: "Snapdeck" });
+      }, 2000);
+    }
+    // { cancelled: true }: neutral reset already applied at start; no additional
+    // badge signal — the net effect is neutral (satisfies the cancelled-no-false-
+    // signal AC).
+  } finally {
+    captureInFlight = false;
+  }
+}
+
 async function handle(msg) {
   switch (msg.type) {
     case "GET_STATE": {

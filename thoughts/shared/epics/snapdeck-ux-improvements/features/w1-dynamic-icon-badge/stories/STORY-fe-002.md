@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 3
-status: approved
+status: in-progress
 depends_on: [STORY-fe-001]
 created_at: 2026-06-19T00:00:00Z
 last_run_id: run-20260619-150619-36719
@@ -370,6 +370,24 @@ correctly applied.
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=3, depends on STORY-fe-001)
+- 2026-06-19 — implemented (frontend-engineer): added `RESOLVE_TTL_MS`, `_resolveInFlight`,
+  `resolvePortCached`, `invalidateResolveCache`, `refreshActiveTab`, and top-level
+  `chrome.tabs?.onActivated?.addListener?.(...)` / `chrome.tabs?.onUpdated?.addListener?.(...)`
+  registrations (double `?.` root-guarded per Contrarian Finding 2). All in the new
+  `w1-dynamic-icon-badge` section of `extension/background.js`. Cumulative
+  `node --test extension/*.test.mjs` 121/121 green.
+
+## Engineer Notes
+
+- Single-flight test `resolvePortCached_singleFlight_oneProbeForConcurrentDerives` verified:
+  two concurrent `resolvePortCached(5101)` calls fired via `Promise.all` → ≤40 fetch calls
+  (one `findController` fan-out, not 80). Third call after settle re-probes (entry cleared
+  in `finally`). AC12 confirmed.
+- The `?.` double-chain on tab listeners (`chrome.tabs?.onActivated?.addListener?.(...)`)
+  no-ops cleanly under the frozen mocks (which define `chrome.tabs` but omit `onActivated`/
+  `onUpdated`). The released sibling suites all still load and pass (121/121).
+- Smoke verification: same as fe-001 — Chrome extension, no web dev server.
+  `Manual verification deferred — Chrome extension; browser-tester smoke pass coordinated by team-lead.`
 - 2026-06-19 — security-architect: appended `## Security Review` (INFO-1 SSRF/AC10 verified
   against live guard; INFO-2 DoS bounded by single-flight+TTL; LOW stale-green accepted; N/A
   checklist). Clean, no HIGH/CRITICAL.

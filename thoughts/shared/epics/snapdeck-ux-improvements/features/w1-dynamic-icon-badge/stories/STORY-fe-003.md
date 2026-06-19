@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: approved
+status: in-progress
 depends_on: [STORY-fe-001, STORY-fe-002]
 created_at: 2026-06-19T00:00:00Z
 last_run_id: run-20260619-150619-36719
@@ -316,6 +316,31 @@ first serialization. The reconcile half (Part 2) depends only on fe-001/fe-002.
 - 2026-06-19 — created by frontend-architect as a SKELETON (effort=2, depends on
   STORY-fe-001/002; live-count trigger mechanism pending BOSS ruling on coordination
   point #4)
+- 2026-06-19 — implemented (frontend-engineer): added `chrome.storage?.session?.onChanged?.
+  addListener?.(...)` (double `?.` root-guarded, strict `reportCountChanged` key-filter) and
+  the `if (chrome.storage?.session && chrome.action?.setIcon) void refreshActiveTab()` guarded
+  SW cold-start re-derive to `extension/background.js`. No second `onMessage.addListener`
+  added. BOSS-locked gate-2 criteria both encoded as unit tests. Cumulative
+  `node --test extension/*.test.mjs` 121/121 green.
+
+## Engineer Notes
+
+- BOSS-locked gate-2 criteria verified:
+  1. `moduleLoadsClean_noStorageInMock`: vm.runInContext under chrome mock with NO `storage`
+     key does not throw; `onMessage` listener still registered.
+  2. `reportCountChanged_rightTabOrange_whenCountPositive` + `_rightTabGreen_whenCountZero`
+     + `onChanged_keyFiltered_resolveCacheWriteNoRederive`: all pass.
+- Key-filter implementation: `if (!changes.reportCountChanged) return;` — ignores fe-002's
+  `resolve:<port>` cache writes that fire `storage.session.onChanged` on the same area.
+  `onChanged_keyFiltered_resolveCacheWriteNoRederive` guards this invariant.
+- `noSecondOnMessageListener` asserts `_onMsgCount === 1` (exactly one `addListener` call
+  across the entire merged background.js).
+- `coldStart_rederivesActiveTab_whenApisPresent`: a separate vm context loaded with
+  `chrome.storage.session` + `chrome.action.setIcon` present, active tab=localhost:5101,
+  report seeded with 2 screenshots, resolve cache pre-populated → badge painted orange '2'
+  at module load. Confirms the guarded top-level re-derive works.
+- Smoke verification: Chrome extension, no web dev server.
+  `Manual verification deferred — Chrome extension; browser-tester smoke pass coordinated by team-lead.`
 - 2026-06-19 — frontend-architect: trigger contract LOCKED by team-lead as Option A
   (`reportCountChanged: {port,count,ts}` tick via `storage.session.onChanged`); swapped
   the `captureTick` placeholder, double-`?.`-guarded the consumer, demoted Option B to

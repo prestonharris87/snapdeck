@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: approved
+status: in-progress
 depends_on: []
 created_at: 2026-06-19T00:00:00Z
 last_run_id: run-20260619-150619-36719
@@ -226,3 +226,20 @@ touches no HTTP endpoint, DB write, or page-reachable input.
 - 2026-06-19 — created by frontend-architect (effort=2, depends on none)
 - 2026-06-19 — security-architect: appended `## Security Review` (INFO-1 + N/A checklist
   dispositions; clean, no HIGH/CRITICAL).
+- 2026-06-19 — implemented (frontend-engineer): added `ICON_COLORS`, `iconImageDataForState`,
+  `applyIconState` to `extension/background.js` (new section below released code, no released
+  line touched). Unit tests in `extension/background.icon-badge.test.mjs`. Cumulative
+  `node --test extension/*.test.mjs` 121/121 green.
+
+## Engineer Notes
+
+- Smoke verification: `extension/background.js` is a Chrome MV3 service worker — there is no
+  web dev server and the browser-tester cannot load the extension directly without a running
+  Chrome instance with the extension loaded. Per story instructions, visual verification is
+  deferred to browser-tester via `bt` when the team lead coordinates the smoke pass. The unit
+  tests cover all acceptance criteria fully. `Manual verification deferred — Chrome extension
+  (no web dev server); browser-tester smoke pass to be coordinated by team-lead.`
+- `OffscreenCanvas` and `chrome.runtime.getURL` require no new manifest permission (confirmed
+  in Security Review INFO-1). `Object.fromEntries` used to build the `{16,48,128}` map.
+- The new code is placed in a clearly-commented section `// w1-dynamic-icon-badge —
+  per-tab icon state machine` below line 334 (end of `saveReport`); no released lines modified.

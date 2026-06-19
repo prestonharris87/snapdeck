@@ -331,3 +331,147 @@ async function saveReport() {
   }
   return { error: (res.json && res.json.error) || res.text || `save failed (HTTP ${res.status})` };
 }
+
+// =============================================================================
+// w1-dynamic-icon-badge — per-tab icon state machine
+// =============================================================================
+
+// --- fe-001: per-tabId icon-state render primitives --------------------------
+
+// State color tokens — green anchored to the existing badge token (#1E8E3E / AC13);
+// orange/gray selected per design.md (CLAR-001).
+const ICON_COLORS = {
+  gray:   "#5F6368",   // not-a-target / inactive
+  green:  "#1E8E3E",   // registered target (existing badge token — AC13 anchor)
+  orange: "#E37400",   // in-progress report (also the orange badge background)
+};
+
+// Tints the packaged logo to a flat silhouette in the state color, at all 3 sizes.
+// Returns { 16: ImageData, 48: ImageData, 128: ImageData } for chrome.action.setIcon.
+// OffscreenCanvas is a service-worker global; chrome.runtime.getURL on own packaged
+// assets is same-origin — both need no new permission (AC13, INFO-1 security positive).
+async function iconImageDataForState(state) {
+  const color = ICON_COLORS[state];
+  const sizes = [16, 48, 128];
+  const entries = await Promise.all(sizes.map(async (s) => {
+    const url = chrome.runtime.getURL("icons/icon-" + s + ".png");
+    const resp = await fetch(url);
+    const blob = await resp.blob();
+    const bitmap = await createImageBitmap(blob);
+    const canvas = new OffscreenCanvas(s, s);
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(bitmap, 0, 0, s, s);
+    ctx.globalCompositeOperation = "source-in";
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, s, s);
+    return [s, ctx.getImageData(0, 0, s, s)];
+  }));
+  return Object.fromEntries(entries);
+}
+
+// Applies one resolved state to ONE tab via the tabId-scoped action API.
+// Every chrome.action.* call carries { tabId } — no global badge touch (namespace
+// isolation: keeps this feature out of the released global-badge namespace kb owns).
+async function applyIconState(tabId, { state, count = 0 }) {
+  const imageData = await iconImageDataForState(state);
+  await chrome.action.setIcon({ tabId, imageData });
+  if (state === "orange") {
+    chrome.action.setBadgeText({ tabId, text: String(count) });
+    chrome.action.setBadgeBackgroundColor({ tabId, color: ICON_COLORS.orange });
+    chrome.action.setTitle({ tabId, title: "Snapdeck — " + count + " unsaved screenshot(s)" });
+  } else {
+    chrome.action.setBadgeText({ tabId, text: "" });
+    chrome.action.setTitle({
+      tabId,
+      title: state === "gray"
+        ? "Snapdeck — not a Snapdeck target"
+        : "Snapdeck — ready to capture",
+    });
+  }
+}
+
+// --- fe-002: tab-driven icon derivation + two-tier resolve + session cache ---
+
+const RESOLVE_TTL_MS = 30000;  // green/gray resolution cache TTL (self-heals deck up/down)
+
+// Per-port single-flight for the /resolve fan-out (PO-required, Contrarian Finding 1).
+// WITHIN-WAKE coordination only: a transient promise cleared on settle (finally) and
+// lost on SW teardown — NOT durable state (same category as iconImageDataForState memo;
+// does not relocate the durable resolution cache out of storage.session — AC9 intact).
+const _resolveInFlight = new Map();  // port -> Promise<boolean>
+
+// Two-tier resolution with a chrome.storage.session cache keyed by browser port.
+async function resolvePortCached(port) {
+  const key = "resolve:" + port;
+  const hit = (await chrome.storage.session.get(key))[key];
+  if (hit && (Date.now() - hit.ts) < RESOLVE_TTL_MS) return hit.resolved;  // cache hit — NO probe
+  // Single-flight: concurrent derives for the SAME port share ONE findController fan-out.
+  // CRITICAL: no `await` between the .has() check and the .set(), so a later-resuming
+  // caller always observes the in-flight entry (collapses onActivated+onUpdated bursts
+  // to a single probe — AC12).
+  if (_resolveInFlight.has(port)) return _resolveInFlight.get(port);
+  const probe = (async () => {
+    const ctrlPort = await findController(port);         // released seam — the ONLY probe
+    const resolved = ctrlPort != null;
+    await chrome.storage.session.set({ [key]: { resolved, ts: Date.now() } });
+    return resolved;
+  })();
+  _resolveInFlight.set(port, probe);
+  try { return await probe; }
+  finally { _resolveInFlight.delete(port); }   // cleared on settle — post-TTL re-probes fresh
+}
+
+async function invalidateResolveCache(port) {
+  if (port == null) return;
+  await chrome.storage.session.remove("resolve:" + port);
+}
+
+// Re-derive + paint the CURRENT active tab. Reuses currentTargetPort() (the released
+// single source of truth) — never a second/looser localhost predicate (AC10).
+async function refreshActiveTab() {
+  const tab = await activeTab();                  // released helper
+  if (!tab) return;
+  const tabId = tab.id;
+  const port = await currentTargetPort();         // released SSOT (non-localhost/deceptive → null)
+  if (port == null) { await applyIconState(tabId, { state: "gray" }); return; }   // AC1/AC10 — no probe
+  const resolved = await resolvePortCached(port);
+  if (!resolved) { await applyIconState(tabId, { state: "gray" }); return; }      // AC3
+  const r = await getReport(port);                // released read seam (SSOT for count)
+  const count = r.screenshots.length;
+  await applyIconState(tabId, count > 0 ? { state: "orange", count } : { state: "green" }); // AC4/AC2
+}
+
+// Top-level listeners — registered SYNCHRONOUSLY at module scope (AC8).
+// Double `?.` (root-guarded) for frozen-mock tolerance: the released sibling suites
+// define chrome.tabs but omit onActivated/onUpdated — the optional chain no-ops
+// rather than throwing at module load (Contrarian Finding 2, PO fold-in).
+chrome.tabs?.onActivated?.addListener?.(() => { void refreshActiveTab(); });
+chrome.tabs?.onUpdated?.addListener?.((tabId, changeInfo, tab) => {
+  if (!tab || !tab.active) return;                // best-effort: only the active tab
+  if (changeInfo.status === "loading") { void (async () => {
+    await invalidateResolveCache(await currentTargetPort());  // reload re-probes (deck up after the fact)
+  })(); }
+  if (changeInfo.status === "complete" || changeInfo.url) { void refreshActiveTab(); }
+});
+
+// --- fe-003: live-count freshness trigger + cold-start re-derive -------------
+
+// Top-level storage.session.onChanged listener (key-filtered).
+// STRICT key-filter: acts ONLY on `changes.reportCountChanged`; ignores fe-002's
+// own `resolve:<port>` cache writes (same storage.session area) — prevents the
+// cache-write → onChanged → re-derive → cache-write feedback loop (BOSS-flagged).
+// Double `?.` for frozen-mock tolerance: released suites stub NO `storage` at all —
+// the optional chain short-circuits cleanly at module load (gate-2 criterion #1).
+// A SECOND chrome.runtime.onMessage.addListener is FORBIDDEN here — the released
+// suites single-capture the last listener; `storage.session.onChanged` is the
+// harness-safe alternative.
+chrome.storage?.session?.onChanged?.addListener?.((changes) => {
+  if (!changes.reportCountChanged) return;    // key-filter: ignore resolve:* cache writes
+  void refreshActiveTab();                    // re-derive from the GET_STATE/getReport SSOT
+});
+
+// SW cold-start re-derive — MV3 re-evaluates the SW top level on every wake, so this
+// runs on each cold-start. The feature-detect guard makes module load clean under the
+// frozen no-`storage`/no-`setIcon` mocks (condition false → no call → no rejection —
+// gate-2 criterion #1). Self-heals a tick dropped during prior SW teardown.
+if (chrome.storage?.session && chrome.action?.setIcon) void refreshActiveTab();

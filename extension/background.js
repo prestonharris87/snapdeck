@@ -120,22 +120,30 @@ let captureInFlight = false;
 // Per-tabId flash bookkeeping (DEF-001 — badge-flash shadow fix).
 // The capture-result `!`/`✓` flash is scoped to the active tab's tabId so it
 // takes precedence over any per-tab steady-state badge another feature paints on
-// that tab (e.g. the report-in-progress count badge). On teardown we clear ONLY
-// that tab's badge; the steady-state owner re-asserts via its own wake-reconcile
-// (DEF-001 resolution: option c — no cross-feature seam / storage write).
+// that tab (e.g. the report-in-progress count badge). On teardown we clear that
+// tab's badge ONLY IF it still shows our own flash (guarded) — so a steady-state
+// repaint (the live count) survives the flash (AC5). The steady-state owner
+// re-asserts via its own wake-reconcile (DEF-001 option c — no seam / no storage).
 let flashTabId = null; // tab currently showing a kb flash (null = none / global)
 let flashTimer = null; // pending teardown timer id
 
-/** Clear kb's flash on `tabId` (per-tab); falls back to the global badge when no
- *  tab was resolved. The steady-state badge owner re-asserts on its next wake. */
-function clearFlash(tabId) {
-  if (tabId == null) {
-    chrome.action.setBadgeText({ text: "" });
-    chrome.action.setTitle({ title: "Snapdeck" });
-    return;
+/** Clear kb's flash on `tabId` — GUARDED. Only clears if the badge STILL shows
+ *  kb's own `✓`/`!`; if the steady-state owner has already repainted that tab
+ *  (e.g. the report-in-progress count), leave it — blanking it would drop the
+ *  live count (AC5). On a read failure, default to NOT clearing (never blank a
+ *  badge we can't confirm is ours). Falls back to the global badge when no tab
+ *  was resolved. Async: it reads the current badge text before deciding. */
+async function clearFlash(tabId) {
+  const target = tabId == null ? {} : { tabId };
+  let current;
+  try {
+    current = await chrome.action.getBadgeText(target);
+  } catch (_) {
+    return; // can't confirm the badge is ours → leave it (never blank the count)
   }
-  chrome.action.setBadgeText({ tabId, text: "" });
-  chrome.action.setTitle({ tabId, title: "Snapdeck" });
+  if (current !== "✓" && current !== "!") return; // steady-state owner repainted
+  chrome.action.setBadgeText({ ...target, text: "" });
+  chrome.action.setTitle({ ...target, title: "Snapdeck" });
 }
 
 /** Cancel any pending flash teardown and clear its tab immediately. Run at the
@@ -150,7 +158,7 @@ function cancelPendingFlash() {
   if (flashTabId !== null) {
     const prev = flashTabId;
     flashTabId = null;
-    clearFlash(prev);
+    void clearFlash(prev); // guarded + fire-and-forget; never blanks a repaint
   }
 }
 
@@ -162,14 +170,14 @@ function setFlash(tabId, text, color, title) {
   if (title != null) chrome.action.setTitle({ ...target, title });
 }
 
-/** Schedule kb's flash on `tabId` to self-clear after `ms`. */
+/** Schedule kb's flash on `tabId` to self-clear (guarded) after `ms`. */
 function scheduleFlashClear(tabId, ms) {
   flashTabId = tabId;
-  flashTimer = setTimeout(() => {
+  flashTimer = setTimeout(async () => {
     flashTimer = null;
     const t = flashTabId;
     flashTabId = null;
-    clearFlash(t);
+    await clearFlash(t);
   }, ms);
 }
 

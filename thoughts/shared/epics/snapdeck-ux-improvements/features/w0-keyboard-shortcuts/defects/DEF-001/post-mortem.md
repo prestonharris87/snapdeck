@@ -85,3 +85,18 @@ fix is entirely within `w0-keyboard-shortcuts`' own released code.
   ships the matching steady-state re-assert (fe-003, unchanged under option c).
 - Both teams edit `background.js` action-badge calls; **BOSS serializes** at the
   Wave-1 landing. Lands in the Wave-1 PR — no separate PR, no push from kb.
+
+## Amendment — AC5 (guarded clearFlash)
+
+Post-ship code review (`w1-dynamic-icon-badge` FE-architect) found the (c)
+"error-only cosmetic" framing was wrong: the unconditional `clearFlash` blanked
+the live count on the SUCCESS path — dynamic-icon repaints the count over `✓`,
+then kb's +2s teardown wiped it → AC5 fail. Honest correction: my "success has no
+gap" reasoning during the seam debate was incomplete; code-tracing beat the
+theoretical consensus.
+
+Fixed by making `clearFlash` **guarded** — read `chrome.action.getBadgeText`,
+clear only if the badge still shows kb's own `✓`/`!`; otherwise the steady-state
+owner repainted, leave it. fe-003 stays no-seam / (c). New test
+`onCommand_successFlashTeardown_doesNotBlankRepaintedCount` (FAIL→PASS vs the
+unguarded code). Cohort `node --test extension/*.test.mjs` → 100/100.

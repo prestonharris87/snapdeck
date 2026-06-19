@@ -86,3 +86,30 @@ The fix is entirely within `w0-keyboard-shortcuts`' own released code
 storage / IndexedDB / `addScreenshot()` (owned by `w0-per-target-reports`).
 Lands in the Wave-1 PR; BOSS serializes alongside `w1-dynamic-icon-badge`'s
 fe-003.
+
+## Amendment — AC5 (guarded `clearFlash`)
+
+The original (c) resolution framed the post-flash gap as "error-only, cosmetic."
+That was **wrong** — caught by `w1-dynamic-icon-badge`'s FE-architect tracing the
+shipped code (`dbdd660`):
+
+- `clearFlash(tabId)` was **unconditional**. On the SUCCESS path,
+  dynamic-icon's `reportCountChanged` tick repaints the live count over kb's
+  `✓`, then kb's +2s teardown **blanked it** → count gone until next wake →
+  **AC5 fail** (+ the keyboard-success / steady-state-after-flash E2Es).
+
+**Fix (kb-side, keeps fe-003 no-seam / (c)):** `clearFlash` is now **GUARDED** —
+it reads `chrome.action.getBadgeText({tabId})` and clears only if the badge still
+shows kb's own `✓`/`!`; if the steady-state owner has repainted (the count), it
+leaves it.
+
+- success: by +2s the count has repainted over `✓` → guard leaves it →
+  **count survives, AC5 holds**.
+- error: `!` shows its full 4s (nothing repaints) → guard clears → brief empty
+  until next wake → *now genuinely* error-only cosmetic.
+- read-failure / dropped-tick → default to NOT clearing (never blank a badge we
+  can't confirm is ours).
+
+New test `onCommand_successFlashTeardown_doesNotBlankRepaintedCount` asserts the
+count survives teardown — **FAILS** against the unguarded `dbdd660`, passes with
+the guard. Cohort `node --test extension/*.test.mjs` → **100/100**.

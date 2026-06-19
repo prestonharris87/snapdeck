@@ -97,6 +97,7 @@ let mockSendMessageResult = null; // value | () => Promise
 let captureVisibleTabCallCount = 0;
 let badgeTextCalls       = []; // obj.text only (legacy assertions)
 let badgeTextObjCalls    = []; // { text, tabId } — DEF-001 per-tabId assertions
+let badgeTextState       = {}; // tabId|'global' -> current text (for getBadgeText guard)
 let badgeBgColorCalls    = [];
 let badgeTitleCalls      = [];
 
@@ -129,7 +130,15 @@ globalThis.chrome = {
     },
   },
   action: {
-    setBadgeText(obj)           { badgeTextCalls.push(obj.text); badgeTextObjCalls.push({ text: obj.text, tabId: obj.tabId }); },
+    setBadgeText(obj) {
+      badgeTextCalls.push(obj.text);
+      badgeTextObjCalls.push({ text: obj.text, tabId: obj.tabId });
+      badgeTextState[obj.tabId == null ? 'global' : obj.tabId] = obj.text;
+    },
+    getBadgeText(obj) {
+      const key = obj && obj.tabId != null ? obj.tabId : 'global';
+      return Promise.resolve(badgeTextState[key] ?? '');
+    },
     setBadgeBackgroundColor(obj){ badgeBgColorCalls.push(obj.color); },
     setTitle(obj)               { badgeTitleCalls.push(obj.title); },
   },
@@ -173,14 +182,15 @@ const ANNOTATE_OK_RESP = {
 // ---------------------------------------------------------------------------
 // beforeEach — reset per-test mutable state
 // ---------------------------------------------------------------------------
-beforeEach(() => {
+beforeEach(async () => {
   // Flush any flash-teardown timer a prior test captured-but-didn't-fire, so
   // background.js's module-scope flashTabId/flashTimer (DEF-001) don't leak
-  // across tests. Fire BEFORE resetting the call arrays so the flush's badge
-  // calls land in the about-to-be-cleared arrays.
+  // across tests. AWAIT each (guarded clearFlash is async + reads the badge) and
+  // flush BEFORE resetting state, so the flush's badge calls land in the
+  // about-to-be-cleared arrays rather than polluting the next test.
   while (_capturedTimeouts.length) {
     const fn = _capturedTimeouts.shift();
-    try { fn(); } catch (_) { /* ignore */ }
+    try { await fn(); } catch (_) { /* ignore */ }
   }
   _kv                         = {};
   mockTabsQueryResult         = null;
@@ -189,6 +199,7 @@ beforeEach(() => {
   captureVisibleTabCallCount  = 0;
   badgeTextCalls              = [];
   badgeTextObjCalls           = [];
+  badgeTextState              = {};
   badgeBgColorCalls           = [];
   badgeTitleCalls             = [];
   _capturedTimeouts.length    = 0;
@@ -424,13 +435,49 @@ test('onCommand_flashTeardown_clearsActiveTabBadgePerTabId', async () => {
   commandListener('capture-screenshot');
   await settle();
 
-  // Fire the captured self-clear timer.
+  // Fire the captured self-clear timer (guarded clearFlash is async).
+  // No steady-state repaint here → the badge still shows kb's own "✓" → the
+  // guard clears it per-tabId.
   const pending = _capturedTimeouts.splice(0);
-  pending.forEach(fn => fn());
+  for (const fn of pending) await fn();
+  await settle();
 
   assert.ok(
     badgeTextObjCalls.some(o => o.text === '' && o.tabId === LOCALHOST_TAB.id),
-    'teardown must clear the active tab\'s badge per-tabId ({ tabId, text: "" })'
+    'teardown must clear the active tab\'s badge per-tabId when it still shows our flash'
+  );
+});
+
+/**
+ * DEF-001 / AC5 (guarded teardown) — if the steady-state owner repaints the count
+ * over kb's "✓" before the 2s teardown, the guard must LEAVE it (read the badge,
+ * see it's no longer "✓", don't clear). The unguarded clear blanked the count →
+ * AC5 ("live count, no tab switch") failed. FAILS against the unguarded code,
+ * PASSES with the guard.
+ */
+test('onCommand_successFlashTeardown_doesNotBlankRepaintedCount', async () => {
+  mockTabsQueryResult   = [LOCALHOST_TAB];
+  mockSendMessageResult = ANNOTATE_OK_RESP;
+
+  commandListener('capture-screenshot');
+  await settle();
+  // kb's "✓" flash is now on tab 1.
+
+  // Simulate w1-dynamic-icon-badge's reportCountChanged tick repainting the live
+  // count over the "✓" before the 2s teardown fires.
+  chrome.action.setBadgeText({ tabId: LOCALHOST_TAB.id, text: '3' });
+
+  // Fire the captured self-clear timer (guarded clearFlash).
+  const pending = _capturedTimeouts.splice(0);
+  for (const fn of pending) await fn();
+  await settle();
+
+  // Guard saw '3' (not '✓') → left it → the count survives (AC5 holds).
+  const finalText = await chrome.action.getBadgeText({ tabId: LOCALHOST_TAB.id });
+  assert.strictEqual(finalText, '3', 'guarded teardown must NOT blank a repainted count (AC5)');
+  assert.ok(
+    !badgeTextObjCalls.some(o => o.text === '' && o.tabId === LOCALHOST_TAB.id),
+    'guarded teardown must not issue a blanking clear over the repainted count'
   );
 });
 

@@ -251,6 +251,11 @@ already does; there are no new transitions or visual state changes to assert.
 - [ ] STORY-db-001 — Sentinel: no server-side DB changes (IndexedDB is client-side) · approved
 - [ ] STORY-do-001 — Sentinel: no devops changes (manifest already grants `storage` + `unlimitedStorage`) · approved
 
+## Stories added (post-release)
+
+- 2026-06-19 — STORY-fe-003: emit chrome.storage.session report-count tick at 3 sites
+  (clarification C1; see decision-memo-v2.md)
+
 ## Defects (populated as found)
 
 - (none yet)

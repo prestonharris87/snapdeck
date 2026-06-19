@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: [STORY-fe-001]
 diff_estimate: substantive
 files_modified:
@@ -192,6 +192,10 @@ Rely on the helper's null-guard so a clear on a non-target tab (where
       `return { ok:true, count }`, using the `portOfUrl(tab.url)` local.
 - [ ] Site 2 emits `(browserPort, 0)` inside `if (res.json && res.json.ok)`
       after `clearReport(browserPort)` — first arg is `browserPort`, not `port`.
+- [ ] None of `saveReport`'s early-return branches emit — `saveReport_failedPost_noEmit`,
+      `saveReport_noController_noEmit`, AND `saveReport_emptyReport_noEmit` all
+      assert NO tick captured (Contrarian Finding 1, PO PROMOTE_TO_AC: hardens
+      "only the success branch emits").
 - [ ] Site 3 captures `currentTargetPort()` into a local, passes it to BOTH
       `clearReport` and `emitReportCountChanged`, and relies on the helper guard
       (a non-target clear emits nothing).
@@ -251,6 +255,18 @@ POST both resolve `{ ok: true, ... }`.
   `fetch` so `/report/save` returns a non-ok json; `saveReport` returns an
   error and does NOT clear; assert NO tick captured (only the success branch
   emits).
+- `extension/background.emit.test.mjs` — `saveReport_noController_noEmit`
+  (Contrarian Finding 1, PO PROMOTE_TO_AC) — seed `report:5101` with one
+  screenshot, stub `fetch` so EVERY `/resolve?port=` probe fails (rejects /
+  non-ok) → `findController` returns null → early return at `background.js:243`;
+  assert `saveReport` returns the no-controller error, `kv['report:5101']` still
+  holds its 1 screenshot (NOT cleared), and NO tick was captured.
+- `extension/background.emit.test.mjs` — `saveReport_emptyReport_noEmit`
+  (Contrarian Finding 1, PO PROMOTE_TO_AC) — with `report:5101` empty
+  (`{ note:'', screenshots:[] }`) and `currentTargetPort()` resolving `5101`,
+  `saveReport` returns the empty-report error at `background.js:239` BEFORE any
+  controller probe; assert NO tick was captured (the early-return branches above
+  the success `if` never emit).
 
 **(b) `chrome.storage` ABSENT → return values + IDB write unaffected (no throw,
 byte-identical):**
@@ -304,6 +320,48 @@ This story IS the post-release additive revision to the already-released
   `chrome.storage.session.onChanged` listener (`?.`-guarded). That consumer is a
   separate feature/team and is out of scope for this story.
 
+**PO arbitration (2026-06-19, add-story arbitrate mode).** Dispositioned the
+`## Contrarian Findings` (0 block / 2 concern / 1 note):
+- **Finding 1 → PROMOTE_TO_AC** — added `saveReport_noController_noEmit` +
+  `saveReport_emptyReport_noEmit` to `## Unit tests` (a) and a matching
+  `## How we validate` checklist line, hardening invariant "only the success
+  branch emits" across 3 of the 4 non-emit `saveReport` branches.
+- **Findings 2 & 3 → ACCEPT_AS_RECOMMENDATION** — recorded in the new
+  `## Consumer note` (best-effort/lossy stream → consumer reconciles via released
+  `GET_STATE`; non-exclusive `storage.session` area + ms-resolution `ts` blind
+  spot). No code/contract change.
+Baseline `## Existing behavior baseline` file:line citations re-verified against
+`extension/background.js` this run — all accurate, no spot-fix. The locked
+`storage.session` mechanism + `{ port, count, ts }` payload were NOT
+re-litigated. `depends_on: [STORY-fe-001]` confirmed against the released
+per-port store + localhost-gated resolution; no peer `## Revisions` block needed
+(no in-feature cross-domain contract change). status: pending → approved.
+
+## Consumer note
+
+The `chrome.storage.session` `reportCountChanged` tick is **best-effort, not a
+lossless log** (Contrarian Findings 2 & 3, PO ACCEPT_AS_RECOMMENDATION):
+
+- **Lossy on suspension / session reset.** The helper's `.set()` is
+  fire-and-forget (un-awaited by design, so released return timing stays
+  decoupled from the storage write). A tick can be dropped if the MV3 service
+  worker is torn down between the synchronous `.set()` and the async write
+  landing, and the entire `storage.session` area is wiped when the browser
+  session ends / the SW backing store resets. The consumer
+  (`w1-dynamic-icon-badge`) MUST reconcile against the released `GET_STATE → {
+  count, port }` on a known wake point (popup-open / SW-wake) and MUST NOT treat
+  `storage.session.onChanged` as a complete count log, or the badge silently
+  drifts.
+- **Non-exclusive area + ms-resolution `ts`.** The `reportCountChanged` key
+  shares the `storage.session` area with w1-fe-002's `/resolve` cache (different
+  key; safe today — w0 only WRITES this one tiny key, never adds an `onChanged`
+  listener — but the area is not exclusive). `ts: Date.now()` is millisecond
+  resolution, so two count-changes inside one millisecond could produce a
+  byte-identical payload that `onChanged` is not guaranteed to fire on —
+  realistically rare (capture needs the annotation UI; save/clear are distinct
+  user actions) and absorbed by the reconciliation above. The contract is locked;
+  this is recorded, not a request to swap `ts` for a monotonic counter.
+
 ## History
 
 - 2026-06-19 — created by frontend-architect (add-story mode; effort=2, depends
@@ -351,6 +409,7 @@ coverage that no test actually owns is the recurring add-story catch).
 (stub `fetch` so every `/resolve?port=` probe fails → `findController` returns null
 → early return at `:243`; assert NO tick captured). Optionally also
 `saveReport_emptyReport_noEmit`. No design change; one (maybe two) test cases.
+**PO disposition:** PROMOTE_TO_AC. Cheap, real regression guard for invariant "only the success branch emits" — added BOTH `saveReport_noController_noEmit` and `saveReport_emptyReport_noEmit` to `## Unit tests` (a) plus a matching `## How we validate` checklist line; covers 3 of the 4 non-emit branches (failed-POST already had a case).
 
 ### Finding 2 — the tick stream is best-effort/lossy; the consumer must reconcile, not trust it as a complete count log
 
@@ -371,6 +430,7 @@ serialized `w1-dynamic-icon-badge` consumer) stating the tick stream is
 **best-effort**: ticks may be dropped on SW suspension / session reset, so the
 consumer must reconcile via `GET_STATE` on a known wake point. No code change in
 this story.
+**PO disposition:** ACCEPT_AS_RECOMMENDATION. Real consumer-side assumption, no code change in this (producer) story — recorded in the new `## Consumer note`; team-lead relays the reconcile-via-`GET_STATE` directive to the `w1-dynamic-icon-badge` consumer over the channel.
 
 ### Finding 3 — shared `storage.session` area is non-exclusive, and `ts:Date.now()` has a same-millisecond identical-payload blind spot
 
@@ -392,3 +452,4 @@ but the `ts` mitigation is imperfect, not airtight. The contract is locked, so t
 is recorded, not a request to swap `ts` for a monotonic counter.
 **Recommendation:** acknowledge — fold both into the same story note as Finding 2.
 No code or contract change.
+**PO disposition:** ACCEPT_AS_RECOMMENDATION. Forward-looking couplings only, absorbed by Finding 2's reconciliation; folded into the same `## Consumer note`. Contract is locked — `ts` is not swapped for a monotonic counter; recorded, not actioned.

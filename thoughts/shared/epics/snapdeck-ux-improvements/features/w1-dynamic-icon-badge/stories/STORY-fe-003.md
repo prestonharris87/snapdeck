@@ -117,14 +117,21 @@ the global (no-`tabId`) badge** for that tab. fe-003 leans on this:
   global reset → steady-state-after-flash.
 - `storage.onChanged` fires in the originating SW context, so the same worker that wrote
   the tick repaints. No new permission (`storage.session` already granted).
-- **Lossy-by-design posture (w0 contrarian note, folded in):** the `reportCountChanged`
-  tick is BEST-EFFORT — `storage.session.set` is fire-and-forget/un-awaited (can drop on
-  SW teardown mid-write), `storage.session` wipes on session reset, and ms-resolution `ts`
-  means two same-millisecond count changes can yield a byte-identical payload that doesn't
-  fire `onChanged`. So treat `onChanged` as a **NUDGE, not an authoritative log**: the
-  count is always reconciled from the released `getReport`/`GET_STATE` SSOT at every WAKE
-  POINT (`onActivated`/`onUpdated` + SW cold-start, below); the tick only repaints BETWEEN
-  reconciliations. Same-ms collisions are negligible at human capture pace.
+- **🔒 DESIGN REQUIREMENT (BOSS-elevated) — the tick is a repaint nudge, NEVER source of
+  truth.** The badge's **authoritative count source is the released `GET_STATE {count,
+  port}`** seam (= `currentTargetPort()` + `getReport(port).screenshots.length`),
+  reconciled on **every wake** (SW cold-start + `onActivated` + `onUpdated`). The
+  `reportCountChanged` tick is BEST-EFFORT / lossy by design — `storage.session.set` is
+  fire-and-forget/un-awaited (can drop on SW teardown mid-write), `storage.session` wipes
+  on session reset, and ms-resolution `ts` means two same-millisecond count changes can
+  yield a byte-identical payload that doesn't fire `onChanged`. So the tick ONLY triggers a
+  repaint *between* reconciliations; it is never read as the count. **Reuse fe-002's
+  EXISTING green/gray wake path** — the tick consumer calls fe-002's `refreshActiveTab`
+  (which reads the count via the `GET_STATE`/`getReport` SSOT), the SAME function
+  `onActivated`/`onUpdated`/cold-start already use. Do NOT add a parallel count path or
+  trust `newValue.count` as authoritative (it's available only for the optional best-effort
+  multi-window repaint of NON-active tabs). Same-ms collisions are negligible at human
+  capture pace, and any dropped tick self-heals at the next wake.
 - **SW cold-start wake point (self-heals a tick dropped during teardown):** add a top-level
   GUARDED re-derive so the active tab repaints on every SW wake, not only on tab events:
   `if (chrome.storage?.session && chrome.action?.setIcon) void refreshActiveTab();`. MV3
@@ -196,6 +203,12 @@ lagging until the next tab event). Do not implement unless Option A is reversed.
       under the frozen no-`storage` mock so gate-2 criterion #1 stays green; the count is
       always reconciled from the `getReport`/`GET_STATE` SSOT at wake points, never trusted
       solely from a (lossy) tick.
+- [ ] **(BOSS-required E2E) badge-correct-after-a-dropped-tick** — with the report at a
+      known count, simulate a MISSED/dropped `reportCountChanged` tick (no `onChanged`
+      fires), then fire a wake event (`onActivated`/`onUpdated` or SW cold-start) and assert
+      the badge reconciles to the correct count from `GET_STATE` — proving the badge never
+      drifts when the lossy tick stream drops an event. (Browser-tester E2E; PO to add the
+      matching spec to feature.md — flagged to team-lead.)
 - [ ] (AC11) After a kb `✓` flash resets, the badge is NOT stuck on `✓`/`!`; the active
       tab shows its correct per-`tabId` steady state (orange `N` after a successful add,
       green after a cancel), with no flicker.
@@ -257,6 +270,11 @@ Extend **`extension/background.icon-badge.test.mjs`**. Add a capturing
   resolved localhost:5101, `report:5101` count 2), loading the merged module triggers the
   top-level guarded re-derive → the active tab is painted orange `'2'` (self-heal-on-wake).
   Pairs with `moduleLoadsClean_noStorageInMock` (guard false → no call, clean load).
+- `extension/background.icon-badge.test.mjs` — `droppedTick_wakeReconcilesFromGetState` —
+  (BOSS-required) badge shows count 1 (orange); set `report:5101` to count 3 WITHOUT firing
+  `onChanged` (simulating a dropped tick); fire a wake event (`onActivated`) and assert the
+  badge reconciles to `'3'` from the `GET_STATE`/`getReport` SSOT — the badge never drifts
+  when a tick is lost.
 
 ## Dependencies
 
@@ -297,3 +315,9 @@ The reconcile half (Part 2) depends only on fe-001/fe-002.
   wake points; added an explicit GUARDED SW-cold-start re-derive wake point (self-heals a
   dropped tick; no-op under the frozen mock) + validation + `coldStart_*` unit case. Also
   reconciled fe-002's restart note to point here.
+- 2026-06-19 — frontend-architect: BOSS elevated lossy-tick to a DESIGN REQUIREMENT
+  (`GET_STATE` authoritative, tick = nudge-only, reuse fe-002's existing wake path — no
+  parallel count path) + a required `droppedTick`-correctness E2E. Added the design-req
+  block, the `droppedTick_wakeReconcilesFromGetState` unit case, and the
+  badge-correct-after-dropped-tick validation item (PO to add the matching feature.md E2E
+  spec — flagged to team-lead).

@@ -348,6 +348,25 @@ CORS, injection (IndexedDB keyed access, no query concat), tenant-isolation (sin
 tool) — all **N/A**. The new entry points (`tabs.onActivated`/`onUpdated`) are browser-internal
 events, **not web-reachable**, so they introduce no untrusted-caller boundary.
 
+**PO disposition:** ACCEPT_AS_RECOMMENDATION — INFO-1 (SSRF / spoofing-negative) is
+security-positive: fe-002 consumes the released `currentTargetPort()` gate verbatim (no second /
+looser predicate), so a deceptive host → gray / no-probe and the `/resolve` fan-out only ever
+targets the fixed hardcoded `127.0.0.1:<7777+i*10>` range — no attacker-controlled target.
+Affirms AC10; standing guardrail: never derive a probe target or port from page content.
+
+**PO disposition:** ACCEPT_AS_RECOMMENDATION — INFO-2 (probe-storm DoS axis) is already
+mitigated by the PO-PROMOTED per-port single-flight + 30s TTL cache (see `## Revisions` and the
+`resolvePortCached_singleFlight_oneProbeForConcurrentDerives` unit case); security concurs, so
+no separate rate-limit story. Non-gating affirmation of an existing AC12-protecting requirement.
+
+**PO disposition:** ACCEPT_AS_RECOMMENDATION — LOW (≤30s stale-green cache) is already
+Contrarian / PO-dispositioned: bounded by `RESOLVE_TTL_MS = 30000` plus the
+`onUpdated status:'loading'` cache-bust, and the cache is per-extension-isolated
+`chrome.storage.session` (not page- or cross-extension-writable), so the blast radius is a brief
+self-healing "looks capturable" with no attacker vector. Pointer: the story's Cache-freshness
+note + fe-002 `## Revisions`. No new action; the N/A checklist (no web-reachable entry point) is
+correctly applied.
+
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=3, depends on STORY-fe-001)

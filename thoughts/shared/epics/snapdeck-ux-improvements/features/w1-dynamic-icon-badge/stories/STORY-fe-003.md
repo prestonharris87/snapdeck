@@ -442,6 +442,27 @@ the second derive is a cache hit), but the filter makes it zero — keep it. **N
 no HTTP endpoint, no DB write, and no page-reachable input. The new entry point
 (`storage.session.onChanged`) is a browser-internal, extension-scoped event — not web-reachable.
 
+**PO disposition:** ACCEPT_AS_RECOMMENDATION — INFO-1 (forged-tick spoofing / tampering-negative)
+is security-positive: `chrome.storage.session` is per-extension isolated and the manifest
+declares no `externally_connectable`, so the `reportCountChanged` tick is not page- or
+cross-extension-spoofable; and by the BOSS-elevated design requirement the tick is a
+repaint-nudge-only — `refreshActiveTab()` always re-reads the authoritative count from the
+`getReport`/`GET_STATE` SSOT — so even a hypothetical forged tick can only trigger a re-read of
+the true count, never inject a false one. `droppedTick_wakeReconcilesFromGetState` doubles as the
+regression test. No AC change.
+
+**PO disposition:** ACCEPT_AS_RECOMMENDATION — INFO-2 (self-trigger-loop DoS-negative) affirms
+the load-bearing strict `changes.reportCountChanged` key-filter (guarded by
+`onChanged_keyFiltered_resolveCacheWriteNoRederive`); keep it. Non-gating.
+
+**PO disposition:** ACCEPT_AS_RECOMMENDATION — the two affirmed accepted-risks need no new
+action: the idle dormant-SW blind spot is the truth-in-labeling `## Acknowledged Risk` (bounded,
+never over-counts, SSOT-reconciled at the next wake event); and the masked `!` error flash is NOT
+a confidentiality / integrity issue and is in fact being SOLVED kb-side (DEF-001 per-`tabId`
+flash + guarded `clearFlash`, see `## Cross-team item`), so security's "BOSS-escalated defect"
+note is now satisfied. N/A checklist correctly applied (extension-scoped `storage.session.onChanged`,
+not web-reachable).
+
 ## Contrarian Findings
 
 > Phase 5.5 stress-test. Verified against live `extension/background.js` (commit `6512a12`):

@@ -210,6 +210,17 @@ CORS, tenant-isolation — all **N/A** for a render-primitive that touches no HT
 DB write, and no page-reachable input. Recorded so the checklist reads as *applied*, not
 skipped.
 
+**PO disposition:** ACCEPT_AS_RECOMMENDATION — INFO-1 and the trust-boundary note are
+security-positive and informational: the icon render is `ImageData`/`OffscreenCanvas` over the
+extension's own packaged same-origin PNGs (no DOM / `innerHTML` / inline SVG → no XSS),
+`setTitle` writes only static text plus the extension's own integer `count` to Chrome's
+non-HTML tooltip sink, and the story adds no manifest permission (AC13) and no asset files.
+Nothing to promote. Standing guardrails to keep: never interpolate page/web content into
+`setTitle`, and preserve the `applyIconState_neverSetsGlobalBadge` per-`tabId` namespace
+isolation (keeps this feature out of the released global-badge namespace kb's flash owns). The
+authn/authz/injection/CSRF/CORS/tenant checklist is correctly N/A for a render primitive that
+touches no HTTP endpoint, DB write, or page-reachable input.
+
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=2, depends on none)

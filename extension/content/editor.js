@@ -286,7 +286,14 @@
 
         group.on("click tap", function (e) {
           e.cancelBubble = true;
-          if (tool === "select") { selectedId = item.id; render(); }
+          // Only re-render on selection CHANGE — if already selected, skip render() so
+          // click #2 of a dblclick arrives at the same Group object (Konva 9.3.22 dblclick
+          // detection compares shape refs; a render() between clicks creates a new Group
+          // object, so r !== l → dblclick never fires). (bt smoke finding, 2026-06-19)
+          if (tool === "select" && selectedId !== item.id) {
+            selectedId = item.id;
+            render();
+          }
         });
         group.on("dblclick dbltap", function (e) {
           e.cancelBubble = true;

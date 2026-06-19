@@ -3,9 +3,9 @@ type: feature
 slug: w1-draggable-toolbar-toggle
 wave: 1
 parent_epic: snapdeck-ux-improvements
-status: planned
+status: in-progress
 created_at: 2026-06-18T00:00:00Z
-last_run_id: run-20260619-042600-10898
+last_run_id: run-20260619-161353-46977
 depends_on: [w0-editor-foundation]
 frontend_lane: N/A
 skip_ui_designer: true
@@ -296,3 +296,7 @@ Domains an architect explicitly decided needed no work for this feature. The sen
 
 - **backend** — No backend changes required for this feature.
 - **database** — **No database changes required for this feature.** This is an explicit
+
+## History
+
+2026-06-19T16:14:57Z — orchestrator: status: 'planned' -> 'in-progress' (started via /mat_implement_feature (BOSS-mode, first on editor.js track))

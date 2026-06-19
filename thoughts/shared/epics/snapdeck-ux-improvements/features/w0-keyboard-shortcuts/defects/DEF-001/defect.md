@@ -16,8 +16,9 @@ test_mode: automated
 suspected_files:
   - extension/background.js
   - extension/background.shortcuts.test.mjs
-status: validated
+status: released
 created_at: 2026-06-19T20:55:00Z
+released_via: PR #2 (merge 8c340a6)
 ---
 
 # Capture-shortcut badge flash shadowed on report-in-progress tabs

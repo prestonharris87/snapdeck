@@ -92,8 +92,12 @@ a single map. The authoritative model lives in the FE stories.
   their own resolved port down into the storage helpers.
 - **`GET_STATE` return shape:** `{ count, note, port }` for the current target;
   `{ count: 0, note: "", port: null }` on a non-localhost (non-target) tab.
-- **Port-resolution cache (if any):** lives in `chrome.storage.session`
-  (MV3-ephemeral-safe), never a module-level service-worker variable. The
+- **Port-resolution cache:** **none in this feature** — resolution is
+  at-handling-time from the active tab (per `frontend-architect`, fe-001), so
+  there is nothing cross-tab to persist. The load-bearing rule that IS enforced
+  is **no module-level report/port state** in the service worker. The
+  `chrome.storage.session` (MV3-ephemeral-safe) rule is documented as a
+  constraint that engages only IF a future change introduces a cache. The
   per-port reports themselves stay in IndexedDB (survive service-worker restart).
 - **No data migration:** the legacy global `"report"` key is abandoned on upgrade
   (not read-and-ported-forward).
@@ -111,3 +115,47 @@ frontend-architect.
 
 Ownership handoff coordinated with `frontend-architect` — see
 `features/w0-per-target-reports/conversations/0001-database-architect-to-frontend-architect-msg.md`.
+
+---
+
+## Feature `w0-editor-foundation` — NO data-model changes (sentinel)
+
+**Decision: sentinel.** This feature introduces **zero** schema/index/migration/
+seed changes. See `features/w0-editor-foundation/stories/STORY-db-001.md`.
+
+### Rationale
+
+- The feature persists the editor's lossless `model` by adding a single **additive
+  field** to the per-screenshot sub-record object literal that `addScreenshot()`
+  already writes (`extension/background.js:129-139`), serialized through the
+  existing structured-clone path (`setReport()` → `objectStore("kv").put(val, key)`).
+- Adding a field to a structured-clone **value** does not alter the `kv` object-store
+  definition: **no new object store, no index, no `indexedDB.open("snapdeck", N)`
+  version bump** (stays at v1), no migration. The geometry envelope
+  (`{ version: 1, items: [...] }`) is a **value** contract owned by the FE/BE
+  stories and the architects' frozen 🤝 CONTRACT — not a DB schema artifact.
+- No index is added or warranted: the in-progress report is a single `kv` key
+  holding a small array read in full, never a queried/filtered collection.
+
+### Ownership boundary
+
+The IndexedDB report-store (`snapdeck`/`kv`) and its keying are owned by sibling
+feature **`w0-per-target-reports`** (frontend/extension domain — see the ownership
+correction in that feature's section above). `w0-editor-foundation` adds
+`screenshots[].model` **orthogonally** to that keying: the whole `screenshots`
+array is carried as-is through the per-port re-key, so the `model` field survives
+transparently. This feature treats `addScreenshot()` as a stable function-level
+seam and does not touch the report-store keying surface.
+
+### Cross-domain confirmation
+
+Sentinel status was coordinated with `backend-architect` (owner of the
+`background.js` `model`-storage work) before finalizing — confirmed the additive
+field needs nothing schema-side (no store/index/migration/version bump). See
+`features/w0-editor-foundation/conversations/0012-backend-architect-to-database-architect-msg.md`.
+
+### Migration / rollback strategy
+
+N/A — no schema change to migrate forward or reverse. Forward-only/soft-delete
+policy is not engaged because no schema is created, altered, or dropped. The
+client-side IndexedDB value-shape change is owned by the FE/BE stories.

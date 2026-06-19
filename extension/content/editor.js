@@ -196,18 +196,19 @@
       var TEXT_AUTOFIT_MIN = 6;     // min font size for text box auto-fit
       var TEXT_PAD = 6;             // inset padding (px) from box outline to text
       var TEXT_FONT_FAMILY = "Arial, Helvetica, sans-serif"; // pinned for measurement stability (contrarian Finding 2)
-      var TEXT_FIT_SAMPLE = 500;  // max chars fed to Konva per fit iteration (DEFECT-001: bounds per-iteration cost;
-                                  // display uses full safeText — Group clip contains any overflow)
       function isFiniteNum(v) { return typeof v === "number" && isFinite(v); }
 
       // Auto-fit helper: find the largest integer font size in [min, cap] such that
-      // textNode (set to width=innerW, wrap:"word") has wrapped height <= innerH.
-      // Binary search: O(log(cap-min)) ≈ 6 iterations (vs. 42 for linear scan) — DEFECT-001 fix.
-      // textNode must have text set before calling; call fitTextFontSize with the measurement
-      // sample text already set on the node (not the full display text) to bound per-call cost.
-      // Returns min if even min overflows innerH (Group clip contains the overflow).
+      // textNode (set to width=innerW, wrap:"word", full text) has wrapped height <= innerH.
+      // DEFECT-001 r2: measures the FULL text (no sample) for correctness, bounded by:
+      //   (1) min-overflow pre-check — if even min overflows, return min in 1 measurement
+      //       (pathological large text in a normal box costs exactly 1 measurement; clip is honest);
+      //   (2) binary search on (min, cap] — O(log(cap-min)) ≈ 6 iterations for can-fit text.
+      // Total: 1 measurement (can't-fit) or 7 measurements (can-fit). No sampling inaccuracy.
       function fitTextFontSize(textNode, innerW, innerH, cap, min) {
-        var lo = min, hi = cap, best = min;
+        textNode.fontSize(min);
+        if (textNode.height() > innerH) { return min; }  // can't fit even at min — short-circuit
+        var lo = min + 1, hi = cap, best = min;
         while (lo <= hi) {
           var mid = lo + Math.floor((hi - lo) / 2);
           textNode.fontSize(mid);
@@ -285,12 +286,8 @@
         if (innerW < TEXT_AUTOFIT_MIN || innerH < TEXT_AUTOFIT_MIN) {
           textNode.fontSize(TEXT_AUTOFIT_MIN);
         } else {
-          // DEFECT-001 fix 2: bound per-iteration measurement cost for pathological long text.
-          // Use a short sample for the fit loop; restore full safeText for display
-          // (Group clip contains any glyph overflow — visual fidelity maintained).
-          if (safeText.length > TEXT_FIT_SAMPLE) { textNode.text(safeText.slice(0, TEXT_FIT_SAMPLE)); }
+          // DEFECT-001 r2: measure full safeText — see fitTextFontSize for the bounded strategy.
           textNode.fontSize(fitTextFontSize(textNode, innerW, innerH, TEXT_AUTOFIT_MAX, TEXT_AUTOFIT_MIN));
-          textNode.text(safeText); // restore full display text (no-op when text was not sampled)
         }
 
         group.add(bgRect);

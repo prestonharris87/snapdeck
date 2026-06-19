@@ -142,7 +142,7 @@ GET_STATE-port cases to the SAME feature test file STORY-fe-001 creates —
 `background.js` into a `node:vm` context with hand-written `chrome.tabs.query` +
 in-memory `indexedDB` stubs, capture the `onMessage` listener, invoke it with
 `{ type:"GET_STATE" }`, await `sendResponse`. `unit-tester` Phase 5a runs
-`node --test extension/`.
+`node --test extension/*.test.mjs`.
 
 Cases (test file `extension/background.reports.test.mjs`):
 
@@ -187,3 +187,38 @@ from a backend contract. The Snapdeck controller is unchanged by this feature.)
   `{ count, note, port }` shape (with the `port: null` non-target sentinel) is
   consistent with fe-001 and the locked scope, and is the frozen contract
   `w1-dynamic-icon-badge` consumes. Baseline section present and file:line-grounded.
+
+## Security Review
+
+STRIDE pass by security-architect (2026-06-18). **No material findings** for this
+story — severity INFO.
+
+### INFO — Additive `port` field discloses only the active tab's own resolved port
+
+- **Information disclosure (assessed, no finding).** The new `port` field in the
+  `GET_STATE` response (`{ count, note, port }`) surfaces the port that
+  `currentTargetPort()` resolved for the **active tab** — i.e. data the caller
+  (the popup, or the `w1` badge, both running for that same active tab) already
+  possesses. It exposes no *other* port's existence or contents: `currentTargetPort()`
+  is localhost-gated and the handler still resolves from the active tab with no
+  caller-supplied port, so there is no cross-port disclosure or enumeration. The
+  `port: null` non-target sentinel correctly avoids implying a target exists on a
+  non-localhost tab.
+- **No new entry point, permission, or auth path** — this is a purely additive
+  field on an existing response shape; no Spoofing/Tampering/DoS/EoP delta beyond
+  what STORY-fe-001 already carries (see fe-001's Security Review, esp. the LOW
+  guard-unification finding, which governs how `currentTargetPort()` resolves the
+  value this story returns).
+- **Contract note (forward-looking):** once frozen, `w1-dynamic-icon-badge`
+  treats `port: null` as "no current target." Downstream consumers must keep
+  trusting `null` as the non-target signal and must NOT reintroduce a
+  caller-supplied port into this contract (that would open the IDOR vector
+  fe-001's INFO note calls out). No action required for this story.
+**PO disposition:** ACCEPT_AS_RECOMMENDATION (affirm). Agreed — the additive
+  `port` field surfaces only the active tab's own resolved port (data the popup /
+  `w1` badge for that same tab already possess); it is localhost-gated, exposes no
+  other port's existence or contents, and `port: null` correctly avoids implying a
+  target on a non-loopback tab. No finding, no AC. The forward-looking contract note
+  (downstream consumers keep trusting `null` as the non-target signal and must NOT
+  reintroduce a caller-supplied port) is the same standing guardrail recorded on
+  fe-001's IDOR INFO disposition — governed there.

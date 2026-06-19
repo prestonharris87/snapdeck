@@ -101,6 +101,14 @@ is the first real consumer of `port`.
 - [ ] The existing localhost/controller guards in `addScreenshot()` /
   `saveReport()` and the controller `/resolve` + `/report/save` contract and the
   saved `report.json` projection are all unchanged.
+- [ ] The write path (`addScreenshot` / `saveReport`) derives its target port via
+  the SAME localhost-gated resolution as the read path (`currentTargetPort()`, or a
+  shared gated helper that both paths call) — there is no second, looser port
+  predicate. A capture/save attempted on a deceptive host such as
+  `http://localhost.evil.com` resolves to **no current target** (rejected with the
+  existing localhost-guard error) and writes **no** `report:*` record, NOT a
+  `report:80`. Write-key ≡ read-key by construction. (Security, fe-001 LOW-1
+  PROMOTE; satisfies scope.md's "one source of truth for the port" directive.)
 
 ## In scope
 
@@ -212,6 +220,20 @@ target (the gray/empty signal the badge feature consumes)
 **When** the user sends `ADD_SCREENSHOT` on that tab
 **Then** it returns the existing localhost-guard error and creates no `report:*`
 record for any port
+
+### Test: Deceptive-host write/read gate parity (security)
+
+**Given** the active tab is a deceptive non-loopback host whose name embeds a
+loopback label — `http://localhost.evil.com/` (which a bare `portOfUrl` would read
+as port `:80`)
+**When** the user sends `ADD_SCREENSHOT`
+**Then** the capture is rejected with the existing localhost-guard error and **no**
+`report:80` (or any `report:*`) record is written — the write path resolves the
+target through the same localhost-gated predicate as the read path, which
+classifies the host as no-target
+**When** the user then sends `GET_STATE` on that same tab
+**Then** it returns `{ count: 0, note: "", port: null }` — the read path agrees:
+no current target. Write-key and read-key never diverge for a deceptive host.
 
 ### Motion E2E (required for any UI feature; write `n/a` for backend-only)
 

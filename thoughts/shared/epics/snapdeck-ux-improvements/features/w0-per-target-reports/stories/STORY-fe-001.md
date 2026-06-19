@@ -222,6 +222,11 @@ async function currentTargetPort() {
       cache is added by this story.
 - [ ] `addScreenshot()` and `saveReport()` remain zero-arg; message-API payloads
       unchanged.
+- [ ] The write path (`addScreenshot`/`saveReport`) resolves its port through the
+      SAME localhost-gated helper as the read path (`currentTargetPort()`), not a
+      second looser predicate: a capture on `http://localhost.evil.com` writes no
+      `report:*` record and is rejected (E2E "Deceptive-host write/read gate
+      parity"; fe-001 LOW-1 PROMOTE).
 - [ ] No-regression: addScreenshot localhost guard + error string, the `ANNOTATE`
       round-trip, the per-screenshot field set (incl. a sibling `model` key), and
       the `/report/save` payload field-renaming are all unchanged.
@@ -240,11 +245,11 @@ UI it already does; no transitions or visual state changes are introduced.
 `node:test` + `node:assert/strict`, ESM, **zero new dependencies, no
 `package.json`** (same convention as
 `.claude/scripts/__tests__/channel-size-warn.test.js`). `unit-tester` Phase 5a now
-runs `node --test extension/`; these specs are in play.
+runs `node --test extension/*.test.mjs`; these specs are in play.
 
 **Test file:** `extension/background.reports.test.mjs` — feature-distinct name so it
 does NOT collide with sibling `w0-keyboard-shortcuts`'
-`extension/background.test.mjs` on the shared `node --test extension/` run.
+`extension/background.test.mjs` on the shared `node --test extension/*.test.mjs` run.
 
 **Harness (no source/manifest change):** `background.js` is a classic service
 worker with no exports, so load its source into a `node:vm` context pre-seeded with
@@ -370,3 +375,151 @@ Established by peer rounds during decomposition (2026-06-19); recorded durably h
   impact: the controller still receives `browser_port` derived from
   `portOfUrl(activeTab.url)`, unchanged (see STORY-be-001). No other story content
   changed.
+
+## Security Review
+
+STRIDE pass by security-architect (2026-06-18). No HIGH/CRITICAL findings — the
+threat surface is well-contained by the extension's existing structure (verified
+against `extension/manifest.json` + `extension/background.js`): **no
+`externally_connectable`** (web pages cannot drive the `chrome.runtime` message
+API), `content_scripts`/`host_permissions` limited to **exact** `localhost`/
+`127.0.0.1`, and `tab.url` is browser-authoritative (page JS cannot cross-origin
+it via `pushState`; Chrome strips embedded userinfo so the
+`http://localhost@evil.com` trick lands as `http://evil.com` and is rejected).
+Two LOW (defense-in-depth) findings and two affirming INFO notes follow; none
+gate delivery.
+
+### LOW — Divergent localhost gate: report write-key vs read-key derive from two predicates
+
+- **Threat (Spoofing / cross-target confusion, EoP-adjacent).** This story adds
+  `currentTargetPort()` with a *tightened* localhost regex
+  `/^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/` (sketch lines 83-88) used by the
+  read/note/clear path, but **deliberately leaves `addScreenshot`'s existing
+  loose guard** `/^http:\/\/(localhost|127\.0\.0\.1)/` untouched (line 99-103 of
+  this story; `background.js:112`) and has `addScreenshot`/`saveReport` derive
+  their port from a bare `portOfUrl(tab.url)` rather than from
+  `currentTargetPort()`. The result is **two different "is this a target / which
+  port" semantics in one file**. They agree for genuine loopback tabs, but for a
+  deceptive hostname (`http://localhost.evil.com/`, `http://127.0.0.1.evil.com/`)
+  the loose guard matches and `portOfUrl` yields `80`, while `currentTargetPort()`
+  correctly returns `null`. So the *write* path would happily key a record the
+  *read* path will never surface for that tab — but **will** surface for the
+  genuine `:80` localhost target → a latent cross-target-poisoning shape. This
+  also contradicts the scope's own critical directive ("keep 'icon is green /
+  capture will save' and 'report key' derived from **one source of truth**").
+- **Why it is only LOW today (not exploitable as shipped):** persistence to
+  `report:<port>` happens *only after* a successful `ANNOTATE` round-trip
+  (`background.js:127-140`), which requires the content script, which is injected
+  only on exact `localhost`/`127.0.0.1` (manifest `content_scripts.matches`). On
+  `localhost.evil.com` the `sendMessage(ANNOTATE)` rejects and nothing is
+  written. The report store's integrity therefore currently rides on an
+  **unrelated subsystem** (content-script injection), not on its own gate.
+- **Recommendation (fits inside this story's "How we're doing it"):** make
+  `addScreenshot` and `saveReport` resolve their port through the **same**
+  localhost-gated helper as the read path — i.e. derive the write-key port from
+  `currentTargetPort()` (or factor the gate+`portOfUrl` into one predicate all
+  three call sites share) so write-key ≡ read-key by construction. This satisfies
+  the scope's "one source of truth" directive, tightens `addScreenshot`'s loose
+  guard as a free defense-in-depth win, and removes the reliance on the ANNOTATE
+  backstop for report-store integrity. Note: `addScreenshot` must still capture
+  on the tab it guards — keep the guard's `{error}` return, just unify the port
+  derivation feeding `getReport`/`setReport`. (Tighter gate also aligns with the
+  security-architect lesson: reuse one guard rather than reimplement a second.)
+**PO disposition:** PROMOTE_TO_AC. Aligns with scope.md's "one source of truth
+  for the port" critical directive and is free defense-in-depth, so I am hardening
+  it into the contract rather than leaving it to implementation discretion. Wired
+  the PO surfaces: added a `feature.md` `## Acceptance criteria` bullet (write path
+  derives its port via the same localhost-gated resolution as the read path;
+  `http://localhost.evil.com` → no-target, not `:80`), a matching `feature.md` E2E
+  scenario ("Deceptive-host write/read gate parity (security)"), and a
+  `## How we validate it was done correctly` checklist item on this story. The
+  frozen `## Unit tests` section is intentionally untouched (BOSS hybrid ruling) —
+  the warranted implementation-time assertion is
+  `addScreenshot_deceptiveHost_writesNoRecord` (stub `tabs.query` →
+  `http://localhost.evil.com`, assert zero `put` calls), which the engineer adds
+  alongside the existing `currentTargetPort_*` cases. **No cross-feature contract
+  change:** the `report:<port>` key format and the `GET_STATE` shape are unchanged.
+
+### LOW — Unbounded `report:<port>` key accumulation under `unlimitedStorage` (no eviction)
+
+- **Threat (Denial of Service / resource exhaustion).** Re-keying from one global
+  `"report"` record to per-port `report:<port>` removes the old design's implicit
+  single-record bound. Every distinct dev-server port the user ever captures on
+  mints a `report:<port>` key, and **nothing ever deletes one**: `clearReport`
+  resets to the empty default *but leaves the key present* (sketch line 74,
+  `setReport(port, EMPTY_REPORT())`), and `saveReport` success calls the same
+  `clearReport`. Empty residue keys are tiny, but an **abandoned non-empty**
+  report (capture N base64-PNG screenshots on an ephemeral port — Vite/webpack
+  rotate ports — then never save) is retained indefinitely, and
+  `unlimitedStorage` (manifest line 6) removes the quota backstop that would
+  otherwise cap growth. Monotonic, single-user, local — but unbounded.
+- **Severity rationale:** LOW — local single-user dev tool, self-inflicted, and
+  empty residue is negligible. The only real cost is orphaned non-empty reports
+  on dead ports with no GC.
+- **Recommendation (PO to disposition in Phase 7.5 — does NOT gate this story):**
+  pick one: **(a)** add an `## Acceptance criteria` note to `feature.md`
+  explicitly *accepting* the no-eviction behavior as known/acceptable for a local
+  tool; or **(b)** spin a small optional follow-up (e.g. under
+  `w2-screenshot-gallery`, which already reads `report:<port>`) to delete the key
+  on `clearReport`/`saveReport`-success instead of writing an empty record, and/or
+  evict `report:<port>` keys for ports with no live controller. I am **not**
+  authoring a defensive `STORY-sec` for this — a LOW local-single-user cleanup
+  does not warrant a standalone story; it fits as an AC note or a sibling
+  follow-up.
+**PO disposition:** ACCEPT_AS_RECOMMENDATION (not gating). LOW is right: local
+  single-user tool, self-inflicted, empty residue negligible, and `clearReport`
+  already resets content — the only real cost is orphaned non-empty reports on dead
+  ephemeral ports. Not promoting to AC and not filing a defect. A per-port GC is the
+  natural responsibility of `w2-screenshot-gallery`, which already reads/manages
+  `report:<port>` records and owns the delete/manage flow; recording it here as that
+  feature's home for any key-deletion (delete the `report:<port>` key on
+  `clearReport`/`saveReport`-success instead of writing an empty record, and/or
+  evict keys for ports with no live controller). **Standing guardrail for w2:** any
+  such deletion must stay resolve-from-active-tab / no caller-supplied port, to
+  preserve the IDOR-free shape (see the IDOR INFO disposition below).
+
+### INFO — Retiring the `portOfUrl(screenshots[0].url)` save fallback is a net security positive
+
+- The intentional retirement of `saveReport`'s legacy fallback (old
+  `background.js:149`; this story's "Explicitly changing" bullet + PO revision
+  note) removes a path where a **page-controlled** value (`screenshots[0].url`
+  originates from the content script's `ANNOTATE` `resp.meta.url`) could influence
+  which `browser_port`/controller a save routed to when the active-tab derivation
+  failed. Post-change, the only port source for save is the browser-authoritative
+  `portOfUrl(tab.url)`. This **tightens** Tampering resistance (removes a
+  page-content-influenced routing input). Affirmed — no action needed; called out
+  so it is not mistaken for a dropped guard.
+**PO disposition:** ACCEPT_AS_RECOMMENDATION (affirm). Agreed — the fallback
+  retirement (already recorded as a PO-accepted intentional change in this story's
+  `## Revisions`) removes a page-controlled (`resp.meta.url`) routing input, so
+  `browser_port` now derives solely from the browser-authoritative
+  `portOfUrl(tab.url)`. No new AC: the existing no-regression validates item that
+  pins the `browser_port` derivation already locks the post-change behavior.
+  **Standing guardrail:** do not reintroduce a page-content-derived port fallback
+  into the save path.
+
+### INFO — API design eliminates the IDOR / port-enumeration vector (affirm)
+
+- The AC "callers never pass a port; port-scoping is pushed *down* into the
+  storage helpers" is a **positive** security property: because `GET_STATE`/
+  `SET_NOTE`/`CLEAR_REPORT` resolve the port from the *active tab* and accept no
+  caller-supplied port, there is no way for any message sender to read or clear an
+  *arbitrary* `report:<otherPort>` record (no IDOR / cross-port enumeration via
+  the message API). Combined with the absence of `externally_connectable`, the
+  only reader of a port's report is that port's own active tab. **Note for
+  downstream features:** per-port keying is a **UX isolation boundary, not a
+  security boundary** — all `report:*` records share one extension-origin
+  IndexedDB; `w1`/`w2` must preserve the "resolve-from-active-tab, no
+  caller-supplied port" shape and must not add a handler that takes a port
+  argument from an untrusted caller.
+**PO disposition:** ACCEPT_AS_RECOMMENDATION (affirm). Agreed and load-bearing
+  for downstream. The "callers never pass a port; port-scoping pushed *down* into
+  the storage helpers" property is what makes cross-port enumeration impossible via
+  the message API, and it is already enforced by this story's
+  "`addScreenshot()`/`saveReport()` remain zero-arg; message-API payloads unchanged"
+  validates item — so no new AC. Promoting the security-architect's forward-looking
+  note to a **standing guardrail for `w1`/`w2`:** per-port keying is a **UX
+  isolation boundary, not a security boundary** (all `report:*` records share one
+  extension-origin IndexedDB) — neither downstream feature may add a handler that
+  accepts a port argument from an untrusted caller. (Same guardrail referenced by
+  the LOW-2 w2-GC disposition above.)

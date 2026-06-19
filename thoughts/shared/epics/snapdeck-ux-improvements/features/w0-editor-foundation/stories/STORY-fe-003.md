@@ -215,3 +215,8 @@ plain JSON only (no Konva nodes/functions). The `annotated`-gate widening (`anno
 `model.length`) is a render/output decision with no security surface.
 
 **Spoofing / Tampering / Repudiation / DoS / EoP: N/A** for this serialization-wiring story.
+
+**PO disposition:** ACCEPT_AS_RECOMMENDATION. No action — the byte-freeze + upstream-exclusion is
+exactly the disclosure boundary already strengthened to assertion-grade in arbitration (`Object.keys(resolvePayload)`
+delta of exactly `"model"` + the 9-field `/report/save` key-set). The security finding confirms the
+existing E2E is the right lock; nothing to add. No new AC, no STORY-sec.

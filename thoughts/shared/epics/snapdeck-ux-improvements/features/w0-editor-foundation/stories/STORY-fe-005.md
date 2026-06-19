@@ -205,3 +205,11 @@ doesn't "harden" this function and silently break the opaque contract.
 own purity contract). It exposes no new attack surface; it is a deterministic data transform over plain
 JSON. `serializeModel`'s deep-clone (`JSON.parse(JSON.stringify(...))`) also means the emitted payload
 can't carry functions/prototypes — a good implicit sanitization on the *serialize* side.
+
+**PO disposition:** ACCEPT_AS_RECOMMENDATION. The envelope-only guard scope is correct and the opaque
+item pass-through MUST stay (ratified forward-compat contract — do NOT add per-item validation here).
+Accept the suggested one-line code comment in `deserializeModel` ("envelope validated here; item-field
+sanity is a render-layer concern — items pass through opaquely for w1/w2 forward-compat") as a
+**non-blocking implementation guardrail** so a future maintainer doesn't "harden" the function and
+silently break the contract — it's a comment, not a new validates item, and no STORY-sec. The
+render-boundary robustness this finding points at is handled by the **PROMOTE_TO_AC on STORY-fe-004**.

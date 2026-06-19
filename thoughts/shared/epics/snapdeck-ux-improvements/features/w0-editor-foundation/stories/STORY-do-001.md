@@ -177,3 +177,8 @@ existing file under `extension/`. No network, no browser — pure file I/O, fits
 
 **Recommendation:** none beyond what's already specified. Keep the "exactly one added array element"
 diff assertion as the gate. Spoofing/Tampering/Repudiation/DoS: N/A for a load-order manifest edit.
+
+**PO disposition:** ACCEPT_AS_RECOMMENDATION. No action — the isolated-world placement, unchanged
+`localhost`/`127.0.0.1` matches, and zero permission/host/`web_accessible_resources`/`externally_connectable`
+delta are already locked by the story's existing "exactly one added array element" diff gate (devops-validator
+auto-rejects any unrelated manifest change). No new AC, no STORY-sec.

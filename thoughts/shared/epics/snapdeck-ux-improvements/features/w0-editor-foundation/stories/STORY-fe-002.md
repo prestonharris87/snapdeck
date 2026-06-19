@@ -206,3 +206,7 @@ Escape→deselect-if-selected-else-finish change is UI-only with no security imp
 **Spoofing / Tampering / Repudiation / DoS / EoP: N/A** — local editor interaction, no trust boundary
 crossed; the `rotateEnabled:false`/single-transformer invariants are correctness, not security,
 properties.
+
+**PO disposition:** ACCEPT_AS_RECOMMENDATION. No action — the `Math.max(1, …)` clamp on
+`transformend` width/height is a robustness positive already specified in the story (it prevents a
+zero/negative dimension persisting into the round-trip). No new surface, no new AC, no STORY-sec.

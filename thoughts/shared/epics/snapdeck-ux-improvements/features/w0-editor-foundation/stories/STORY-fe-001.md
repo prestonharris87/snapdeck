@@ -191,3 +191,8 @@ glyph) avoids any markup-injection footgun in the toolbar.
 
 **Spoofing / Tampering / Repudiation / DoS / EoP: N/A** — single-user local editor interaction, no
 trust boundary crossed.
+
+**PO disposition:** ACCEPT_AS_RECOMMENDATION. No action — additive draw tool; the `box` item is
+model-only (never enters the lossy projection or `/report/save`, so no upstream-disclosure delta), renders
+via `Konva.Rect` on canvas (no `innerHTML`), and the plain-text toolbar label avoids any markup-injection
+footgun. No new AC, no STORY-sec.

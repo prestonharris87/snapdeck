@@ -89,6 +89,13 @@ developer-facing annotation tool, not the project's component-library UI; `skip_
       drag/edit, whole-arrow move, undo, and redo all behave exactly as before.
 - [ ] No new editor page/tab, no change to capture, no change to the localhost-only guard, and no
       report-store re-keying (that is w0-per-target-reports).
+- [ ] **Malformed-item render tolerance (hydration):** hydrating a structurally-valid `model`
+      (`version:1`, array `items`) whose item fields are numerically hostile
+      (`NaN`/`Infinity`/string `width`/etc.) renders **without throwing or emitting a console error** —
+      bad items are skipped or coerced at the render boundary (`render()`/`renderBox`/`renderArrow`),
+      while `deserializeModel`'s **opaque item pass-through stays unchanged** (forward-compat for w1/w2
+      subtype fields). _[promoted from the security-architect LOW on STORY-fe-004 — w2-screenshot-gallery
+      will re-open arbitrary stored models through this exact path.]_
 
 ## In scope
 
@@ -177,6 +184,18 @@ re-login: the store is the extension's own service-worker IndexedDB, which is no
 endpoints and the box `{x,y,width,height}` survive verbatim with zero geometry/content drift, so
 `model → persist → load → model` is identity; **and** immediately after hydration Undo is a no-op (the
 hydrated state is the undo baseline).
+
+### Test: malformed-item hydration renders without throwing (render-boundary robustness)
+
+**Given** a structurally-valid persisted `model` — `{ version:1, items:[…] }` — whose items carry
+numerically hostile geometry (e.g. `{type:"box", x:NaN, y:0, width:"120", height:Infinity}`) alongside a
+well-formed arrow
+**When** the editor is opened via ANNOTATE `{ image, model }` with that payload
+**Then** the editor mounts and `render()` completes with **no thrown exception and no console error** —
+the malformed box is skipped or coerced at the render dispatch while the well-formed arrow renders
+normally — and `deserializeModel` is unchanged (items still pass through opaquely). _[proves the
+STORY-fe-004 render-guard AC promoted from the security-architect LOW; Konva-render-dependent, so this is
+a browser-tester E2E assertion, not a `node --test` case.]_
 
 ### Motion E2E
 

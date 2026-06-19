@@ -110,6 +110,11 @@ stored `screenshots[].model`.
 - [ ] **Undo baseline:** immediately after hydration, Undo does nothing (loaded state is the baseline).
 - [ ] **Opaque items:** an unknown/extra field on a hydrated item (a w1/w2 subtype field) survives
       hydration → Done round-trip unchanged.
+- [ ] **Malformed-item render tolerance** _(promoted from the security-architect LOW)_: hydrating a
+      `version:1` payload whose items carry non-finite or wrong-typed geometry
+      (`NaN`/`Infinity`/string `width`) renders **without throwing or emitting a console error** — bad
+      items are skipped or coerced at the render dispatch (`render()` / `renderBox`/`renderArrow`), keeping
+      `deserializeModel`'s opaque pass-through unchanged.
 
 ## Motion contract
 
@@ -152,6 +157,11 @@ transition, `frontend_lane: N/A`, so no reduced-motion-affected animation.
   E2E to assertion-grade** — `done2.model.items deepEquals done1.model.items` + post-hydration Undo-no-op —
   so the PO E2E proves `model → persist → load → model` identity, not just "looks the same". No
   story-content change. **Promoted `pending → approved`.**
+- 2026-06-19 — **product-owner security-finalize.** Dispositioned the security-architect's LOW
+  (render-boundary robustness on hydration) as **PROMOTE_TO_AC**: added a "Malformed-item render
+  tolerance" item to the validates checklist above, plus a matching AC + PO E2E in `feature.md`. Harden at
+  the render dispatch (`render()`/`renderBox`/`renderArrow`), NOT in `deserializeModel` (the opaque
+  forward-compat pass-through stays intact). See the `**PO disposition:**` line in `## Security Review`.
 
 ## History
 
@@ -197,6 +207,20 @@ correctly":
       wrong-typed geometry (`NaN`/`Infinity`/string `width`) renders **without throwing or emitting a
       console error** — bad items are skipped or coerced at the render dispatch (`render()` /
       `renderBox`/`renderArrow`), keeping `deserializeModel`'s opaque pass-through unchanged.
+
+**PO disposition:** PROMOTE_TO_AC (per team-lead steer + security-architect recommendation: harden at
+the *render boundary*, NOT in `deserializeModel` — tightening the pure module would break the ratified
+opaque forward-compat contract). The fix lives in this feature's render dispatch
+(`render()`/`renderBox`/`renderArrow` in `editor.js`, which fe-001/fe-004 already modify), so promotion is
+**scope-clean, not creep**. Wired downstream per the PROMOTE_TO_AC rule: (1) added the malformed-item
+render-tolerance item to this story's "How we validate it was done correctly" checklist above; (2) added a
+matching acceptance criterion **and** a PO E2E scenario ("malformed-item hydration renders without
+throwing") to `feature.md`. The assertion is Konva-render-dependent, so it belongs in the **browser-tester
+E2E lane** — NOT the pure `node --test` module (fe-005's opaque pass-through must stay intact); the
+engineer adds the render-guard assertion at implementation time. **Rationale for promoting a LOW:**
+**w2-screenshot-gallery** will re-open arbitrary *stored* models, so a disk-corrupted / partial-write /
+future-buggy-producer model re-enters Konva through this exact path — a thrown render would brick that
+screenshot's editor. The wave-0 foundation should not ship the hydration path unguarded.
 
 Disposition is the PO's call in Phase 7.5: either (a) accept-risk now + carry this AC into
 w2-screenshot-gallery where untrusted-on-disk models are actually re-opened, or (b) add the small

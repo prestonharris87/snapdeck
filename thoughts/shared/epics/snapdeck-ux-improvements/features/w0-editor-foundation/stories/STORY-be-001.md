@@ -323,3 +323,12 @@ external source, revisit a bound then.
 **Spoofing / Repudiation: N/A.** `ADD_SCREENSHOT` is same-extension `chrome.runtime` messaging (no
 `externally_connectable`; not web-reachable); no audit-trail surface exists on this client-side ephemeral
 store (no entity table → the audit-columns checklist item does not apply here).
+
+**PO disposition:** ACCEPT_AS_RECOMMENDATION for all three INFO findings. The load-bearing privacy
+property — `model` is local-only and **excluded** from `/report/save` — is already locked by the exact
+9-field upstream key-set assertion (`saveReport_omitsModelFromUpstreamPayload_*`, cross-checked on the
+fe-003 producer side), so no annotation geometry/text silently widens the upstream payload. The opaque
+verbatim store + `?? null` default are correct and add/relax no guard. The unbounded-opaque-value DoS is
+an explicit **accept-risk** INFO — annotation count is human-bounded in w0 and this is a single-user local
+tool — so **no STORY-sec is warranted** (matches the security-architect's own call); revisit a size/count
+bound **if** w2-screenshot-gallery later imports models from an external source. No new AC.

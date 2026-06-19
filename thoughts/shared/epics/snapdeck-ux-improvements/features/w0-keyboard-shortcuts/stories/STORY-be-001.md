@@ -14,7 +14,7 @@ greenfield: false
 created_at: 2026-06-19T00:00:00Z
 last_run_id: run-20260619-023636-42973
 visual_references: []
-defects: []
+defects: [snapdeck-ux-improvements/DEF-001]
 ---
 
 # Story: Capture keyboard-shortcut command + onCommand listener + badge signal

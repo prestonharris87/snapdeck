@@ -16,7 +16,7 @@ test_mode: automated
 suspected_files:
   - extension/background.js
   - extension/background.shortcuts.test.mjs
-status: approved
+status: validated
 created_at: 2026-06-19T20:55:00Z
 ---
 

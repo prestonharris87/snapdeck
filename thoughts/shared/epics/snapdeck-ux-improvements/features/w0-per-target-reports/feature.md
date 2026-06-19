@@ -3,7 +3,7 @@ type: feature
 slug: w0-per-target-reports
 wave: 0
 parent_epic: snapdeck-ux-improvements
-status: planning
+status: planned
 created_at: 2026-06-18T00:00:00Z
 last_run_id: run-20260619-021434-24507
 depends_on: []
@@ -252,3 +252,11 @@ already does; there are no new transitions or visual state changes to assert.
 ## Defects (populated as found)
 
 - (none yet)
+
+## No-work domains
+
+Domains an architect explicitly decided needed no work for this feature. The sentinel stories that recorded these decisions were pruned at the end of `/mat_write_feature`; the rationale is preserved here.
+
+- **backend** — No backend changes required for this feature.
+- **database** — **No database changes required for this feature.**
+- **devops** — No devops changes required for this feature.

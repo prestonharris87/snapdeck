@@ -247,7 +247,8 @@ animations/transitions, so there is no reduced-motion-affected motion. Consisten
 - 2026-06-19T17:24:51Z — orchestrator — validate validated; honesty passed (BOSS-mode implement)
 - 2026-06-19 — created by frontend-architect (effort=3, depends on STORY-fe-001)
 - 2026-06-19T00:00:00Z — implemented (commit: 3cab947)
-- 2026-06-19T20:10:00Z — DEFECT-001 fix applied (commit: 6a03abb) — bounded fit loop: binary search + TEXT_FIT_SAMPLE=500
+- 2026-06-19T20:10:00Z — DEFECT-001 fix applied (commit: 6a03abb) — bounded fit loop: binary search + TEXT_FIT_SAMPLE=500 [superseded by r2]
+- 2026-06-19T20:28:00Z — DEFECT-001 r2 fix applied (commit: 37ed252) — drop TEXT_FIT_SAMPLE; min-overflow pre-check + full-text binary search; bt C+D smoke pass
 
 ## Engineer Notes
 

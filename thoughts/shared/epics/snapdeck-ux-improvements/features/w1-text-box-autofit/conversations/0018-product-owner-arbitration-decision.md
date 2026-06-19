@@ -103,3 +103,21 @@ for confirmation; revisions stand absent an implementation-blocker flag. Two con
 resolved-by-revision (not accepted-as-risk), four info findings dispositioned, two feature.md AC
 inaccuracies corrected. No `## Acknowledged Risk` block was warranted (both concerns had cheap in-scope
 fixes). Plan ready for Phase 7 (security) / decision-recorder synthesis.
+
+## Addendum — FE-architect confirmation + cross-story reconciliation (2026-06-19)
+
+frontend-architect confirmed (SendMessage) **both revisions implementable as written, no blocker**: the
+fe-002 clamp+short-circuit is the load-bearing fix for the finite-thin-box; the pinned `fontFamily` is a
+render constant (not stored on the model item), so round-trip stays model-byte identity; the fe-003
+Group attach is satisfiable (the Group has explicit `width/height`, so the helper's `width()*scaleX()`
+bake is well-defined — no Rect fallback needed); and the renderBox carve-out (text-path-only gate) is the
+right call for preserving fe-001's no-regression AC.
+
+**One cross-story consistency fix applied** (FE-architect catch): the `draggable` flag physically lives
+in fe-002's `renderText`, but fe-002's body still documented the LOOSE gate while fe-003 mandated the
+TIGHT gate — as written an engineer would ship fe-002's loose flag then fe-003 re-tightens it (an unsafe
+momentary draggable-no-write-back intermediate + a one-line story contradiction / validator snag).
+**Resolution: set the tight gate `tool==="select" && selectedId===item.id` in fe-002 from the start**
+(updated fe-002's "Interaction handlers preserved" bullet + fe-003's "Currently (post-fe-002)" baseline +
+fe-003's gate bullet to attribute the set-point to fe-002). fe-003 keeps ownership of the contract
+rationale, the transformer attach, and the verification. No status change — both stories remain approved.

@@ -96,9 +96,13 @@ handlers. **Select/move/resize via the shared transformer + re-fit on resize is 
   same font, with zero drift.
 - **Interaction handlers preserved:** the Group keeps `click/tap → if select-mode set selectedId;
   render()` (`editor.js:156`) and `dblclick/dbltap → editText(item, node)` (`editor.js:157`), and
-  `draggable: tool==="select"` (move/resize write-back is wired in fe-003 via the shared transformer).
-  `editText` is already box-aware from STORY-fe-001, so double-click re-edit opens the textarea over the
-  box with the existing text pre-filled.
+  **`draggable: tool==="select" && selectedId===item.id`** — the **tight** gate, set here in `renderText`
+  **from the start** (not the looser `tool==="select"`). This prevents an unselected box from being
+  body-draggable with no `dragend` write-back (the geometry write-back lives only in
+  `attachBoxTransformer`, attached when selected); fe-003 owns the contract rationale + the transformer
+  attach + verification. Move/resize write-back is wired in fe-003 via the shared transformer. `editText`
+  is already box-aware from STORY-fe-001, so double-click re-edit opens the textarea over the box with the
+  existing text pre-filled.
 
 ## Existing behavior baseline
 
@@ -301,6 +305,17 @@ to maximize measurement stability, and **record explicitly** that the round-trip
 validate item; the w2 hand-off contract now states this in writing so a future consumer cannot assume
 cross-machine visual identity the design does not provide.
 
+**Cross-story reconciliation (draggable gate set tight HERE from the start).** The `draggable` flag
+physically lives in this story's `renderText` node creation, but fe-003 owns the data-loss concern
+(Concern 2) that requires the **tight** gate `tool==="select" && selectedId===item.id`. To avoid an
+unsafe intermediate (fe-002 shipping the loose flag, then fe-003 re-tightening it) and a one-line
+story-body contradiction, I set the **tight gate in fe-002 from the start** (the "Interaction handlers
+preserved" bullet now reads the tight gate with a forward-ref); fe-003 retains ownership of the contract
+rationale + the transformer attach + verification. (Surfaced by frontend-architect on confirm; the
+divergence from the contrarian's "shared-path" wording is unchanged — released `renderBox` stays loose,
+preserving fe-001's no-regression AC.)
+
 Status promoted pending → approved. No cross-domain conflict (be/db/do sentinels verified correct);
-both revisions are within this FE story's owned code. FE-architect notified of the exact clamp/font
-wording for confirmation; revisions stand absent an implementation-blocker flag.
+both revisions are within this FE story's owned code. FE-architect confirmed both revisions implementable
+as written (clamp+short-circuit is the load-bearing fix; pinned `fontFamily` is a render constant, not
+stored on the model item, so round-trip stays model-byte identity).

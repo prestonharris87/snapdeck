@@ -62,8 +62,10 @@ This closes the feature.
   shared `Konva.Transformer` (`editor.js:52-53`, `rotateEnabled:false`) is ever attached; it lives on
   `selectLayer` so it survives `annLayer.destroyChildren()` (`editor.js:98`).
 - **Draggable gate (REQUIRED — Concern resolution, see Revisions):** the text Group's creation-time
-  `draggable` flag (set in `renderText`, fe-002) MUST be gated `tool === "select" && selectedId ===
-  item.id` — **not** the looser `tool === "select"`. Rationale: under the loose gate an **unselected**
+  `draggable` flag MUST be gated `tool === "select" && selectedId === item.id` — **not** the looser
+  `tool === "select"`. The flag physically lives in `renderText` and is **set tight by fe-002 from the
+  start** (so there is no loose-then-tight intermediate); this story owns the contract rationale below,
+  the transformer attach, and the verification. Rationale: under the loose gate an **unselected**
   box is draggable, so a body-`mousedown` drags the Konva node and suppresses the trailing `click` →
   no selection AND no `dragend` (the geometry write-back lives only in `attachBoxTransformer`, attached
   only when selected) → the move silently reverts on the next `render()`, including the `render()`
@@ -107,7 +109,8 @@ This closes the feature.
   selected in select mode. `editor.js:170-189` — `renderBox` already attaches via the selected block
   (`:185-188`).
 - **Currently (post-fe-002):** `renderText` renders the `Konva.Group`(white Rect + black wrapped Text),
-  wires `click→select` / `dblclick→editText`, `draggable: tool==="select"`, and the bounded auto-fit is
+  wires `click→select` / `dblclick→editText`, `draggable: tool==="select" && selectedId===item.id` (the
+  **tight** gate, set by fe-002 per this story's Concern-2 contract), and the bounded auto-fit is
   recomputed each `render()`. There is **no** transformer attach in `renderText` yet (this story adds it).
 - **Dispatch path / call graph:** select-click → `selectedId=item.id` → `render()` → `renderText`
   selected block → `attachBoxTransformer(group,item)`. Resize → `transformend` → bake geometry +
@@ -304,5 +307,11 @@ The contrarian correctly caught that the AC framing "only `text` changes" silent
 path; clarified the re-edit AC to distinguish non-empty (geometry preserved) vs empty (box removed) and
 added the E2E note so the empty-delete is not filed as a regression.
 
-Status promoted pending → approved. FE-architect notified of the draggable-gate scoping decision for
-confirmation; revisions stand absent an implementation-blocker flag.
+Status promoted pending → approved. **FE-architect confirmed both revisions implementable as written**
+(Group attach is satisfiable — the fe-002 Group has explicit `width/height`, so the helper's
+`width()*scaleX()` bake is well-defined; no Rect fallback needed). **Cross-story reconciliation applied:**
+FE-architect flagged that the `draggable` flag lives in fe-002's `renderText`, so to avoid a
+loose-then-tight intermediate + a one-line story contradiction, the **tight gate is now set in fe-002
+from the start** (fe-002's "Interaction handlers preserved" bullet + its "Currently (post-fe-002)"
+baseline here both read the tight gate); this story retains the contract rationale + the transformer
+attach + verification. Released `renderBox` stays loose (preserves fe-001's no-regression AC) — unchanged.

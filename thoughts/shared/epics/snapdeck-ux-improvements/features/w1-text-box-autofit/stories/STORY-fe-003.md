@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: approved
+status: in-progress
 depends_on: [STORY-fe-001, STORY-fe-002]
 created_at: 2026-06-19T15:30:00Z
 last_run_id: run-20260619-150554-36418
@@ -222,6 +222,45 @@ feature level. No cross-domain dependency; see feature.md §No-work domains.)
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=2, depends on STORY-fe-001, STORY-fe-002)
+- 2026-06-19T00:00:00Z — implemented (commit: 3cab947)
+
+## Engineer Notes
+
+Implemented in the same commit as fe-001 and fe-002.
+
+**Key implementation details:**
+- Select block added to `renderText`: mirrors `renderBox:185-188` exactly:
+  ```js
+  if (selectedId === item.id && tool === "select") {
+    attachBoxTransformer(group, item);
+    selectLayer.batchDraw();
+  }
+  ```
+- The attached node is the `Konva.Group` from fe-002, which has explicit `width`/`height` set (for
+  the clip). `attachBoxTransformer`'s `node.width() * node.scaleX()` bake is therefore well-defined.
+- `attachBoxTransformer` is reused **unchanged** (frozen signature — no parallel transformer, no fork).
+  On `transformend` it bakes `scaleX/scaleY → width/height` + `snapshot(); render()`, which triggers
+  the auto-fit re-fit automatically.
+- **Resize → re-fit is automatic** (no new code): `render()` rebuilds the Group at the new geometry
+  and re-runs `fitTextFontSize`. Enlarging reduces line count / can grow font up to (never above)
+  `TEXT_AUTOFIT_MAX`; shrinking re-wraps + shrinks to `TEXT_AUTOFIT_MIN` (then clips).
+- **Tight draggable gate** physically set in fe-002's `renderText` Group creation; this story owns
+  the contract rationale. On unselected mousedown → `click` fires → selectedId set → `render()` →
+  group becomes draggable → second drag moves with `dragend` write-back.
+- **Re-edit** (double-click → `editText(item, null)`): box-aware from fe-001 — textarea fills the
+  current box geometry. Geometry preserved on non-empty commit; box removed on empty (intentional,
+  consistent with create-flow, undoable).
+- **Lossless round-trip**: model→persist→load→model is identity by construction (geometry+text only,
+  no stored fit); verified by `editor.textbox.test.mjs` node tests.
+- `renderBox` (released) `draggable: tool==="select"` left unchanged — preserving fe-001 no-regression AC.
+
+**Contract nuance discovered:** The tight draggable gate on the text Group diverges from released
+`renderBox` which uses the looser `tool==="select"`. This is **intentional by PO arbitration** and
+documented in fe-003 revisions. The text pattern is the correct contract `w2-rectangle-tool` adopts.
+
+**Smoke verification:** `dev-server.txt` empty — no dev server running. Transformer attach, resize-bake,
+re-fit, single/double-click, round-trip are deferred to browser-tester E2E gate.
+Manual verification deferred — dev server not available at implementation time.
 
 ## Contrarian Findings
 

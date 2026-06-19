@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: approved
+status: in-progress
 depends_on: []
 created_at: 2026-06-19T15:30:00Z
 last_run_id: run-20260619-150554-36418
@@ -213,6 +213,28 @@ none — builds on the **released** w0-editor-foundation contracts (feature-leve
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=2, depends on none)
+- 2026-06-19T00:00:00Z — implemented (commit: 3cab947)
+
+## Engineer Notes
+
+Implemented alongside fe-002 and fe-003 in a single warm-context pass since all three stories modify
+the same file (`extension/content/editor.js`) and fe-002/fe-003 depend on fe-001's geometry shape.
+
+**Key decisions made:**
+- Merged the `box` + `text` mousedown/mousemove into a single shared branch keyed by `tool`/`drawing.type`.
+  The `w2-rectangle-tool` slots in by adding its type to the shared branch — no third copy.
+- Text drawing preview uses red (`#e53935`) stroke to match the text tool's visual identity.
+- `editText` box-awareness: when `isFiniteNum(item.width) && isFiniteNum(item.height)`, positions AND
+  sizes the textarea directly from item geometry; legacy path unchanged.
+- `stage.on("click tap")` handler removed entirely (it only handled the text tool).
+- Text button title: `"Add a text comment (drag a box)"` — plain text, no glyph/emoji/SVG.
+
+**Smoke verification:** `dev-server.txt` was empty (dev server not running). Canvas interactions
+(drag gesture, textarea positioning, sub-threshold reject) are deferred to browser-tester E2E gate
+when the dev server is available.
+
+**Unit tests:** `extension/editor.textbox.test.mjs` — 7 pure-node tests (projection strip + round-trip
+identity). All 95 tests pass (88 prior + 7 new): `node --test extension/*.test.mjs` → 95/95 pass.
 
 ## Contrarian Findings
 

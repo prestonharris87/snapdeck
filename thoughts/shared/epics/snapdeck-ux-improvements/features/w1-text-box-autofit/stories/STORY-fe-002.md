@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 3
-status: approved
+status: in-progress
 depends_on: [STORY-fe-001]
 created_at: 2026-06-19T15:30:00Z
 last_run_id: run-20260619-150554-36418
@@ -242,6 +242,36 @@ animations/transitions, so there is no reduced-motion-affected motion. Consisten
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=3, depends on STORY-fe-001)
+- 2026-06-19T00:00:00Z — implemented (commit: 3cab947)
+
+## Engineer Notes
+
+Implemented in the same commit as fe-001 and fe-003 (all three stories modify `extension/content/editor.js`).
+
+**Key implementation details:**
+- `renderText` fully rewritten: `Konva.Group({x,y,width,height,clip:{...}})` containing a white-fill
+  `Konva.Rect` (stroke `#e53935`, strokeWidth 2) and a black `Konva.Text` (fill `#111111`,
+  fontFamily `"Arial, Helvetica, sans-serif"`, wrap:"word", listening:false).
+- `TEXT_AUTOFIT_MAX=48`, `TEXT_AUTOFIT_MIN=6`, `TEXT_PAD=6`, `TEXT_FONT_FAMILY` added as module
+  constants near `RENDER_ITEM_CAP`/`RENDER_TEXT_CAP`.
+- `fitTextFontSize(textNode, innerW, innerH, cap, min)`: linear decrement from cap, bounded by
+  (cap-min)=42 iterations. Text measured via `textNode.height()` at each font size.
+- **Inset clamp**: `innerW = Math.max(1, item.width - 2*TEXT_PAD)`, same for `innerH`.
+- **Clamped-inset short-circuit (security LOW PROMOTE)**: when `innerW < TEXT_AUTOFIT_MIN ||
+  innerH < TEXT_AUTOFIT_MIN`, short-circuit directly to `TEXT_AUTOFIT_MIN` — skips the measurement
+  loop entirely, relying on Group `clip` to contain overflow. This closes the ~12–18px residual
+  worst-case-slow band on crafted re-opened models.
+- **Tight draggable gate** (`tool === "select" && selectedId === item.id`) set at group creation
+  time — per the cross-story reconciliation, fe-002 owns the flag physically; fe-003 owns the rationale
+  and transformer attach.
+- **Geometry guard** mirrors renderBox: skips non-finite or wrong-type x/y/width/height; skips ≤0 dims.
+- `safeText` capped before any measurement (RENDER_TEXT_CAP=10000 chars).
+- `fontFamily` pinned for cross-font-environment stability; documented that rendered wrap is
+  environment-dependent (only model-byte identity guaranteed).
+
+**Smoke verification:** `dev-server.txt` empty — no dev server running. Canvas-dependent assertions
+(auto-fit wrap, visual treatment, hostile-item render guard) deferred to browser-tester E2E gate.
+Manual verification deferred — dev server not available at implementation time.
 
 ## Contrarian Findings
 

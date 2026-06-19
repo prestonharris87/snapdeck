@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 1
-status: validated
+status: released
 depends_on: [STORY-fe-001]
 diff_estimate: substantive
 files_modified:
@@ -187,6 +187,7 @@ Implemented in the same pass as STORY-fe-001 (coupled: same file, depends on fe-
   empty-state formalized.
 - 2026-06-18 — implemented by frontend-engineer. GET_STATE → { count, note, port }; non-target → { count:0, note:"", port:null }. node --test: tests 25 | pass 25 | fail 0. Manual verification deferred — additive service-worker field, no UI surface.
 2026-06-19T04:10:24Z — orchestrator: status: 'in-progress' -> 'validated' (frontend-validator: validated; honesty-check: passed (commit db6f7b7); node --test 25/25)
+2026-06-19T15:02:27Z — BOSS: status: 'validated' -> 'released' (Released via Wave-0 PR #1 (merge 5526403))
 
 ## Revisions
 

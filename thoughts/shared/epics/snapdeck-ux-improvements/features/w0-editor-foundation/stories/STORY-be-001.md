@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: backend-engineer
 author_architect: backend-architect
 effort: 1
-status: validated
+status: released
 depends_on: [STORY-fe-003]
 diff_estimate: substantive
 files_modified: [extension/background.js, extension/background.editormodel.test.mjs]
@@ -282,6 +282,7 @@ Established via SendMessage rounds with `frontend-architect` and `database-archi
   created `extension/background.editormodel.test.mjs` with 5 tests (vm-context listener-seam
   pattern); `node --test extension/*.test.mjs` → 30/30 pass (25 siblings + 5 new).
   Manual verification deferred — Chrome extension SW; no HTTP endpoint; E2E lane is browser-tester.
+2026-06-19T15:02:27Z — BOSS: status: 'validated' -> 'released' (Released via Wave-0 PR #1 (merge 5526403))
 
 ## Engineer Notes
 

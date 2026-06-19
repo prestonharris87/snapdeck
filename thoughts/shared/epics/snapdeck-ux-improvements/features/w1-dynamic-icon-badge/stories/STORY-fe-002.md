@@ -76,9 +76,9 @@ async function refreshActiveTab() {
 }
 
 // Top-level listeners — registered SYNCHRONOUSLY at module scope (AC8).
-// NOTE the `?.` — see "Defensive registration" in How we're doing it.
-chrome.tabs.onActivated?.addListener(() => { void refreshActiveTab(); });
-chrome.tabs.onUpdated?.addListener((tabId, changeInfo, tab) => {
+// NOTE the double `?.` (`onActivated?.addListener?.`) — see "Defensive registration".
+chrome.tabs.onActivated?.addListener?.(() => { void refreshActiveTab(); });
+chrome.tabs.onUpdated?.addListener?.((tabId, changeInfo, tab) => {
   if (!tab || !tab.active) return;               // best-effort: only the active tab
   if (changeInfo.status === "loading") { void (async () => {
     await invalidateResolveCache(await currentTargetPort());  // reload re-probes (deck up after the fact)
@@ -142,17 +142,23 @@ posture. (Document as an accepted risk; flagged for Contrarian 5.5.)
 - **Count source (AC10, per database-architect):** read the count via `getReport(port)`
   → `screenshots.length` consistently. Do NOT fork a second count read (e.g. don't also
   go through the `GET_STATE` message in one place and `getReport` in another).
-- **Defensive registration (load-bearing — do NOT skip the `?.`):** the new top-level
-  `chrome.tabs.onActivated?.addListener` / `onUpdated?.addListener` use optional chaining
-  so they no-op when the API is absent. Reason: the **released** sibling unit suites
-  (`background.reports.test.mjs:85-117`, `background.shortcuts.test.mjs`,
-  `background.editormodel.test.mjs`) load this same `background.js` into a `node:vm`
-  with hand-written `chrome` mocks that do NOT stub `tabs.onActivated`/`onUpdated`. A
-  bare `chrome.tabs.onActivated.addListener(...)` would THROW at module load and break
-  those released suites — which are off-limits to edit (released-work boundary). The `?.`
-  keeps the cumulative `node --test extension/*.test.mjs` run green; in the real MV3
-  worker the APIs always exist, so registration still happens at top level (AC8 holds —
-  it is synchronous module-scope code, not inside an async callback).
+- **Defensive registration (load-bearing — do NOT skip the `?.`):** register the new
+  top-level listeners as `chrome.tabs.onActivated?.addListener?.(...)` /
+  `chrome.tabs.onUpdated?.addListener?.(...)` (double optional-chain). Reason: the
+  **released** sibling unit suites (`background.reports.test.mjs`,
+  `background.shortcuts.test.mjs`, `background.editormodel.test.mjs`) load this same
+  MERGED `background.js` into a `node:vm` against a MINIMAL hand-written `chrome` mock.
+  Team-lead-confirmed mock inventory (2026-06-19): it HAS `runtime.onMessage`,
+  `commands.onCommand`, `tabs.query`/`captureVisibleTab`/`sendMessage`, and
+  `action.setBadgeText`/`setBadgeBackgroundColor`/`setTitle` — but NO `tabs.onActivated`,
+  `tabs.onUpdated`, `storage`, or `action.setIcon`. A bare
+  `chrome.tabs.onActivated.addListener(...)` would THROW at module load and break those
+  released suites — which are off-limits to edit (released-work boundary). The `?.` no-ops
+  under the stub and keeps BOSS's cumulative `node --test extension/*.test.mjs` integration
+  gate green; in the real MV3 worker the APIs always exist, so registration still happens
+  at top level (AC8 holds — synchronous module-scope code, not inside an async callback).
+  Note `setIcon`/`storage.session` are only ever called INSIDE functions (never at module
+  load), so they don't throw under the stub (the frozen suites never call those functions).
 - **Restart (AC7):** because all listeners are top-level, the ephemeral worker rebinds
   them on wake; the active tab is re-derived on the next tab event, reading `count` from
   IndexedDB via `getReport` and resolution from `chrome.storage.session` (or a fresh

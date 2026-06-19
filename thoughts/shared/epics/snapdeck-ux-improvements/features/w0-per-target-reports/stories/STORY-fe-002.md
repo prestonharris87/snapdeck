@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 1
-status: approved
+status: validated
 depends_on: [STORY-fe-001]
 diff_estimate: substantive
 files_modified:
@@ -172,11 +172,21 @@ coverage, driven by `browser-tester` against the live message API.
 (No cross-domain producer: the `port` value comes from the active-tab seam, not
 from a backend contract. The Snapdeck controller is unchanged by this feature.)
 
+## Engineer Notes
+
+Implemented in the same pass as STORY-fe-001 (coupled: same file, depends on fe-001 helpers). The `GET_STATE` handler now returns `{ count, note, port }` where `port = await currentTargetPort()`. The non-target sentinel (`port: null`) falls out naturally since `currentTargetPort()` returns `null` for non-localhost tabs, and `getReport(null)` (fe-001) returns the empty default without an IDB read — no extra branch required.
+
+**Unit gate result:** 4 GET_STATE-port cases appended to `extension/background.reports.test.mjs`. Cumulative run: tests 25 | pass 25 | fail 0.
+
+**Smoke verification:** Additive field on service-worker response; popup is unchanged. Manual verification deferred — no UI surface; E2E coverage (Two-port capture isolation, Non-target tab reports empty) via browser-tester at Phase 5b.
+
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=1, substantive, depends on STORY-fe-001).
   Additive `GET_STATE.port` contract for the w1 badge feature; non-target
   empty-state formalized.
+- 2026-06-18 — implemented by frontend-engineer. GET_STATE → { count, note, port }; non-target → { count:0, note:"", port:null }. node --test: tests 25 | pass 25 | fail 0. Manual verification deferred — additive service-worker field, no UI surface.
+2026-06-19T04:10:24Z — orchestrator: status: 'in-progress' -> 'validated' (frontend-validator: validated; honesty-check: passed (commit db6f7b7); node --test 25/25)
 
 ## Revisions
 
@@ -222,3 +232,16 @@ story — severity INFO.
   (downstream consumers keep trusting `null` as the non-target signal and must NOT
   reintroduce a caller-supplied port) is the same standing guardrail recorded on
   fe-001's IDOR INFO disposition — governed there.
+
+## Files touched
+
+_Computed at validation time vs `master`. Engineer divergence from architect intent is shown in the delta sections — that's rationale-relevant signal, not noise._
+
+**Files changed in diff:**
+- _(no files in diff)_
+
+**Declared but not touched** (architect's `files_modified` front-matter entries that did not appear in the diff):
+- `extension/background.js`
+
+**Touched but not declared** (diff entries the architect did not list in `files_modified`):
+- _(none — engineer stayed within declared scope)_

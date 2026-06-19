@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: approved
+status: validated
 depends_on: []
 diff_estimate: substantive
 files_modified:
@@ -356,6 +356,8 @@ Established by peer rounds during decomposition (2026-06-19); recorded durably h
   Domain (extension `background.js`) assigned to FE by team-lead for this feature.
   Controller no-op + DB no-op peer-confirmation requested from backend-architect
   and database-architect.
+- 2026-06-18 — implemented by frontend-engineer. Files changed: extension/background.js, extension/background.reports.test.mjs (new), extension/background.shortcuts.test.mjs (updated key refs). node --test: tests 25 | pass 25 | fail 0. Manual verification deferred — service-worker/IDB plumbing, no UI surface; E2E coverage via browser-tester at Phase 5b.
+2026-06-19T04:10:24Z — orchestrator: status: 'in-progress' -> 'validated' (frontend-validator: validated; honesty-check: passed (commit db6f7b7); node --test 25/25)
 
 ## Revisions
 
@@ -375,6 +377,20 @@ Established by peer rounds during decomposition (2026-06-19); recorded durably h
   impact: the controller still receives `browser_port` derived from
   `portOfUrl(activeTab.url)`, unchanged (see STORY-be-001). No other story content
   changed.
+
+## Engineer Notes
+
+Implementation delivered alongside STORY-fe-002 in one pass (coupled: same file, fe-002 depends on fe-001).
+
+**LOW-1 PROMOTE resolution:** `addScreenshot()` now uses the **tight** localhost regex `/^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/` matching `currentTargetPort()`'s predicate, so write-key ≡ read-key by construction. Deceptive hosts (`http://localhost.evil.com/`) fail the `(:|\/|$)` anchor and are rejected before any IDB call. The old loose guard `/^http:\/\/(localhost|127\.0\.0\.1)/` is gone.
+
+**saveReport retirement of fallback:** `saveReport()` now calls `currentTargetPort()` at the top — port is derived before reading the record, so the `portOfUrl(screenshots[0].url)` fallback (old line 205) is cleanly removed. Non-localhost tab gets "could not determine the dev-server port" error (expected scope-aligned behavior).
+
+**Shortcuts test regression fixed:** `background.shortcuts.test.mjs` referenced `_kv['report']` (global key). After re-keying, the LOCALHOST_TAB (`:3000`) writes to `_kv['report:3000']`. Updated three assertions in that file.
+
+**Smoke verification:** This story has no rendered UI surface — it is pure service-worker/IndexedDB plumbing. The popup is unchanged. Browser-tester smoke deferred to feature E2E gate (Phase 5b) where the full message-API scenarios (capture isolation, note isolation, save isolation, service-worker restart) will be exercised against the live extension. Manual verification deferred — no browser-tester available in this dispatch context.
+
+**Unit gate result:** `node --test extension/*.test.mjs` — tests 25 | pass 25 | fail 0 (17 new cases in `background.reports.test.mjs` + 8 existing in `background.shortcuts.test.mjs`).
 
 ## Security Review
 
@@ -523,3 +539,16 @@ gate delivery.
   extension-origin IndexedDB) — neither downstream feature may add a handler that
   accepts a port argument from an untrusted caller. (Same guardrail referenced by
   the LOW-2 w2-GC disposition above.)
+
+## Files touched
+
+_Computed at validation time vs `master`. Engineer divergence from architect intent is shown in the delta sections — that's rationale-relevant signal, not noise._
+
+**Files changed in diff:**
+- _(no files in diff)_
+
+**Declared but not touched** (architect's `files_modified` front-matter entries that did not appear in the diff):
+- `extension/background.js`
+
+**Touched but not declared** (diff entries the architect did not list in `files_modified`):
+- _(none — engineer stayed within declared scope)_

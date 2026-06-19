@@ -267,16 +267,21 @@ Implemented in the same commit as fe-001 and fe-003 (all three stories modify `e
   innerH < TEXT_AUTOFIT_MIN`, short-circuit directly to `TEXT_AUTOFIT_MIN` — skips the measurement
   loop entirely, relying on Group `clip` to contain overflow. This closes the ~12–18px residual
   worst-case-slow band on crafted re-opened models.
-- **DEFECT-001 fix 2 (commit 6a03abb) — bounded fit loop for large text:** bt smoke found that a
-  20K-char text item (capped to RENDER_TEXT_CAP=10K) in a normal-size box ran 43 linear iterations ×
-  10K-char canvas measurement ≈ 20+ second event-loop block. Two changes in `fitTextFontSize()`:
-  (1) **Binary search** replaces the linear decrement — O(log(cap−min)) ≈ 6 iterations vs. 42.
-  (2) **`TEXT_FIT_SAMPLE = 500`** constant: if `safeText.length > TEXT_FIT_SAMPLE`, the textNode
-  is temporarily set to `safeText.slice(0, TEXT_FIT_SAMPLE)` for each Konva measurement call, then
-  restored to full `safeText` for display. Per-iteration canvas measurement is now bounded to 500
-  chars regardless of item text length. Combined worst-case: ≈6 × (500-char measurement) per item.
-  bt re-smoke (2026-06-19T20:05Z): no hang, render completed in <2s total (includes Chrome launch),
-  0 console errors, 20K-char text displayed and clipped inside Group.
+- **DEFECT-001 r2 (commit 37ed252) — accurate bounded auto-fit (drop under-sampling):**
+  `TEXT_FIT_SAMPLE=500` (6a03abb fix 2b) was measuring only 500 chars to pick the font size but
+  displaying the full `safeText` — for 500–2000-char text in a non-degenerate box, the font was
+  sized too large → full text wrapped to more lines than measured → overflowed Group clip → text
+  cut off (AC#3 violation). Fixed by dropping the sample entirely. `fitTextFontSize()` now uses a
+  two-phase strategy on the FULL `safeText` (already RENDER_TEXT_CAP-capped):
+  - **Phase 1 (1 measurement):** check full text at `TEXT_AUTOFIT_MIN`. If it overflows `innerH`,
+    return min immediately — pathological large text hits this in 1 measurement.
+  - **Phase 2 (≤6 measurements):** binary search over `(min, cap]` for can-fit text.
+  Total: 1 or ≤7 measurements; no sampling inaccuracy.
+  bt re-smoke (2026-06-19T20:28Z):
+  - **Scenario C** (220×220 box, 1500 chars): `fontSize=7`, text fits within box, 0 console errors ✓
+    (old r1 would have returned ≈10–12 → clipped; r2 returns 7 → accurate full-text fit)
+  - **Scenario D** (200×100 box, 20K chars): `fontSize=6` (Phase 1 short-circuit fired), render
+    <2s, 0 console errors ✓. Screenshots: `bt-cd-C-long-text-220x220.png`, `bt-cd-D-large-text-200x100.png`.
 - **Tight draggable gate** (`tool === "select" && selectedId === item.id`) set at group creation
   time — per the cross-story reconciliation, fe-002 owns the flag physically; fe-003 owns the rationale
   and transformer attach.

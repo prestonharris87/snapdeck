@@ -25,7 +25,10 @@ diff_estimate: substantive
 > a guarded `chrome.storage?.session?.set?.({ reportCountChanged: {port,count,ts} })` tick
 > (a separate released-work defect tracked on the defect subchannel); this story consumes
 > it via a top-level `chrome.storage.session.onChanged` listener. The **reconcile** half
-> below is FINAL. Add the w0-emission defect story id to `depends_on` once it's opened.
+> below is FINAL. The w0-emission linkage is captured at the FEATURE level (feature.md
+> `depends_on: [w0-per-target-reports]`) + BOSS serialization — do NOT add a cross-feature
+> id to this story's `depends_on` (story ids are bare/non-qualified; w0 also has a
+> `STORY-fe-003`). Keep `depends_on: [STORY-fe-001, STORY-fe-002]`.
 
 ## What we're doing
 
@@ -231,10 +234,15 @@ Extend **`extension/background.icon-badge.test.mjs`**. Add a capturing
 
 ## Dependencies
 
-STORY-fe-001, STORY-fe-002. **Plus: the released-work defect** that adds the
-`reportCountChanged` tick to w0's `addScreenshot`/`saveReport`/`CLEAR_REPORT` (locked
-contract; tracked on the defect subchannel) — add its story/defect id to `depends_on`
-once it's opened. The reconcile half (Part 2) depends only on fe-001/fe-002.
+`depends_on: [STORY-fe-001, STORY-fe-002]` — **within-feature only**. The trigger/consumer
+half ALSO consumes the `reportCountChanged` tick added to **w0-per-target-reports**'
+`background.js` (the locked `defect-screenshot-added-ping` contract) — but this
+cross-feature linkage is expressed as PROSE here, **NOT** as a `depends_on` entry: story
+ids in this framework are bare/non-feature-qualified (w0-per-target-reports ALSO has a
+`STORY-fe-003`), so a cross-feature id in `depends_on` would collide / resolve as unknown
+(`validate-depends-on.py`). The cross-feature dependency is captured correctly by
+feature.md's `depends_on: [w0-per-target-reports]` + BOSS's w0-lands-first serialization.
+The reconcile half (Part 2) depends only on fe-001/fe-002.
 
 ## History
 
@@ -254,3 +262,7 @@ once it's opened. The reconcile half (Part 2) depends only on fe-001/fe-002.
   into `## Unit tests` — (1) module-loads-clean under a no-`storage` mock, (2) keyed
   `reportCountChanged` updates the right tab orange/green + `/resolve`-cache-write is
   ignored. (runtime.sendMessage path fully dropped per BOSS re-ratification.)
+- 2026-06-19 — frontend-architect: per team-lead, kept `depends_on:
+  [STORY-fe-001, STORY-fe-002]` (within-feature only) — the w0-emission linkage is PROSE
+  in `## Dependencies` (story ids are bare/non-qualified; cross-feature id would collide),
+  captured at feature level by feature.md `depends_on: [w0-per-target-reports]`.

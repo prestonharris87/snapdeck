@@ -47,6 +47,14 @@ async function setReport(port, r) {
 }
 async function clearReport(port) { await setReport(port, EMPTY_REPORT()); }
 
+// Emit a storage.session tick whenever the report count for a port changes.
+// Optional-chained so it no-ops cleanly when chrome.storage is absent (the
+// frozen vm harnesses have no storage key — invariant 2).
+function emitReportCountChanged(port, count) {
+  if (port == null) return;                       // null-port guard (load-bearing at site 3)
+  chrome.storage?.session?.set?.({ reportCountChanged: { port, count, ts: Date.now() } });
+}
+
 // --- helpers -----------------------------------------------------------------
 function portOfUrl(url) {
   try {
@@ -181,9 +189,12 @@ async function handle(msg) {
       return addScreenshot();
     case "SAVE_REPORT":
       return saveReport();
-    case "CLEAR_REPORT":
-      await clearReport(await currentTargetPort());
+    case "CLEAR_REPORT": {
+      const port = await currentTargetPort();
+      await clearReport(port);
+      emitReportCountChanged(port, 0);  // site 3: helper guard drops null (non-target clear)
       return { ok: true };
+    }
     default:
       return { error: "unknown message" };
   }
@@ -225,6 +236,7 @@ async function addScreenshot() {
     model: resp.model ?? null,   // lossless editor model — local store only, NOT in saveReport() whitelist
   });
   await setReport(port, r);
+  emitReportCountChanged(port, r.screenshots.length);  // site 1: count rose by 1
   return { ok: true, count: r.screenshots.length };
 }
 
@@ -256,6 +268,7 @@ async function saveReport() {
   }, 20000);
   if (res.json && res.json.ok) {
     await clearReport(browserPort);
+    emitReportCountChanged(browserPort, 0);  // site 2: count reset to 0 on successful save
     return res.json;
   }
   return { error: (res.json && res.json.error) || res.text || `save failed (HTTP ${res.status})` };

@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: in-progress
+status: validated
 depends_on: [STORY-do-001, STORY-fe-002]
 greenfield: false
 diff_estimate: substantive
@@ -219,6 +219,20 @@ NOT start a long-lived dev server from a backgrounded shell. Then:
   in `editor.js`; implement the grab-handle/drag story first so this story's diff
   builds on the post-fe-002 toolbar (clean, conflict-free, separately reviewable).
 
+## Engineer Notes
+
+- **Smoke verification:** `.claude/state/dev-server.txt` does not exist — dev server not running. `Manual verification deferred — dev server not running; Phase 5 browser-tester E2E covers toggle/non-destructive/export-guard ACs.`
+- **Toggle button placement:** inserted between Select and the existing sep1 (which now separates toggle from Undo/Redo). A new `sepVis` separator separates Select from Hide/Show. Final toolbar order: `[grip] [➤ Arrow] [T Text] [Box] [⤢ Select] [sepVis] [Hide/Show] [sep1] [↶ Undo] [↷ Redo] [sep2] [✓ Done] [✕ Cancel]`.
+- **Label convention:** initial label is `"Hide"` (annotations shown); flips to `"Show"` when hidden. `.snapdeck-active` class applied when hidden (reuses existing CSS rule, no new CSS — consistent with `files_not_modified: overlay.css`).
+- **cursorLayer included (PO arbitration):** the toggle hides `annLayer`, `selectLayer`, AND `cursorLayer` — applying `v.annVisible` (from `layerVisibility`) to `cursorLayer` reuses the already-derived flag with no `editor-chrome.js` contract change. On restore all three are brought back via `batchDraw()`.
+- **No `render()` in toggle handler:** `render()` calls `annLayer.draw()` and rebuilds children — calling it would be a no-op visually but would risk mutating layer state. The toggle only calls `layer.visible()` + `batchDraw()` — purely view-state.
+- **Export guard placement:** guard is AFTER `selectedId = null; render();` (which detaches the transformer) and BEFORE `stage.toDataURL()`. This is the correct window — render() has rebuilt the annotation canvas contents, then we restore visibility, then toDataURL() composites all layers. In the never-toggled path `annLayer.visible(true)` is a no-op (already visible).
+- **Cancel path confirmed guard-free:** `finish(cancelled=true)` returns at line 388-391 before reaching the guard. Contrarian verified-sound note confirmed.
+- **`annShown` scope:** local `var annShown = true` declared in `openEditor()` toolbar-wiring section. Captured by closure in `bar.onToggleVisibility`. Toggle state resets on each `openEditor()` call (not persisted — per AC).
+- **`ec` reuse:** `ec = window.__snapdeckEditorChrome` already defined by fe-002 in the same `openEditor()` scope. `nextVisibility` and `layerVisibility` consumed from there — no re-implementation.
+- **No CSS changes:** `overlay.css` untouched (`files_not_modified`). The toggle button uses the existing `.snapdeck-active` class for the "hidden" pressed state.
+- **Cumulative test run:** `node --test extension/*.test.mjs` — 88/88 pass, 0 fail, 0 regression.
+
 ## Cross-domain contract
 
 Established via peer messaging this run (mirrored to
@@ -236,6 +250,7 @@ Established via peer messaging this run (mirrored to
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=2, depends on STORY-do-001 + STORY-fe-002; consumes window.__snapdeckEditorChrome)
+- 2026-06-19T00:00:00Z — implemented (commit: e4816cf) — Manual verification deferred — dev server not running; Phase 5 browser-tester E2E covers toggle/non-destructive/export-guard ACs.
 
 ## Contrarian Findings
 
@@ -363,3 +378,15 @@ STORIES_LOCKED so the second-to-merge engineer rebases on the first's `buildTool
 additions deliberately.
 
 Status `pending → approved`.
+
+## Validation
+
+- result: validated
+- frontend-validator: validated — toggle button via btn() + onToggleVisibility/setVisibility; flips annLayer+selectLayer+cursorLayer (3-layer raw view); view-state flag annShown never in model/past/future; NO snapshot/model mutation; zero undo impact; export guard restores all 3 before toDataURL (cancel returns first); 88/88 no regression.
+- honesty-check-validator: passed — only editor.js + story touched; no test deleted/skipped/weakened; 88/88 real; no faked behavior.
+
+## History
+
+- 2026-06-19T16:43:42Z — orchestrator — validate validated (frontend-validator)
+- 2026-06-19T16:43:42Z — orchestrator — honesty passed (honesty-check-validator)
+- 2026-06-19T16:43:42Z — orchestrator — status in-progress → validated

@@ -178,6 +178,40 @@ and `chrome.runtime.getURL` stubs so `iconImageDataForState` runs without throwi
 none. (Greenfield render primitive; consumes no in-feature producer story. The base
 icon PNGs and the `chrome.action` API are pre-existing/released and unchanged.)
 
+## Security Review
+
+> security-architect STRIDE pass (single-feature-review), 2026-06-19. Grounded against
+> live `extension/background.js` + `extension/manifest.json` (read in full this pass).
+> Verdict: **clean — INFO only.** No HIGH/CRITICAL → no PO arbitration needed.
+
+**INFO-1 — Icon render is `ImageData`/`OffscreenCanvas` over packaged same-origin assets;
+no XSS, no remote fetch, no new permission (security-positive).** `iconImageDataForState`
+tints the extension's OWN packaged PNGs via `fetch(chrome.runtime.getURL('icons/icon-*.png'))`
+— a same-origin read of bundled assets, no remote URL, no `web_accessible_resources` needed.
+The output is `ImageData` applied via `chrome.action.setIcon`; there is **no DOM, no
+`innerHTML`, no inline SVG**, so the icon path is not a script-injection vector (consistent
+with the project lesson that `action`-API/`ImageData` surfaces carry no DOM-XSS). The badge
+`setTitle` strings (`"Snapdeck — N unsaved screenshot(s)"`) write to Chrome's native
+non-HTML tooltip sink, and `count` is the extension's own integer (`screenshots.length`) — no
+untrusted echo, no encoding gap. The story adds **no manifest permission** (AC13) and **no
+asset files**; `OffscreenCanvas` is a worker global needing no `offscreen` permission
+(verified against the live manifest: `["activeTab","tabs","scripting","storage",
+"unlimitedStorage"]`, no `externally_connectable`). **No action.**
+
+**Trust-boundary note (security-positive):** the story's `applyIconState_neverSetsGlobalBadge`
+unit case (every `chrome.action.*` call carries `{ tabId }`) is also a *namespace-isolation*
+guarantee — it keeps this feature's per-tab paints out of the released global-badge namespace
+that kb's `runCaptureCommand()` flash owns, so the two cannot silently clobber each other's
+state. Good defensive instinct; keep it.
+
+**Checklist dispositions (extension, no-server, no-PII, localhost-only):** authn/authz,
+input-validation-to-DB, secrets, audit columns, soft-delete, rate-limit, injection, CSRF,
+CORS, tenant-isolation — all **N/A** for a render-primitive that touches no HTTP endpoint, no
+DB write, and no page-reachable input. Recorded so the checklist reads as *applied*, not
+skipped.
+
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=2, depends on none)
+- 2026-06-19 — security-architect: appended `## Security Review` (INFO-1 + N/A checklist
+  dispositions; clean, no HIGH/CRITICAL).

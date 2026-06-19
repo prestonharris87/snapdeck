@@ -295,9 +295,65 @@ feature); no in-feature be/db/do producer story to depend on.
   `{ count, note, port }` are UNCHANGED and consumed read-only. STORY-db-001 is a
   sentinel. The `chrome.storage.session` resolution cache is FE-owned, not a DB.
 
+## Security Review
+
+> security-architect STRIDE pass (single-feature-review), 2026-06-19. Grounded against
+> live `extension/background.js` (`currentTargetPort` :78-83, `findController` :97-109,
+> `CONTROLLER_TRIES=40` :7). Verdict: **clean — INFO only.** No HIGH/CRITICAL → no PO
+> arbitration needed.
+
+**INFO-1 — `/resolve` fan-out has no attacker-controlled target and no SSRF surface
+(EoP/Spoofing-negative; AC10 verified at the released-code level).** I re-opened the live
+guard rather than trusting memory (per project lesson): `currentTargetPort()` (`:81`) uses the
+boundary-anchored predicate `/^http:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/`, **byte-identical**
+to the write-path gate in `addScreenshot()` (`:266`) — write-key ≡ read-key, the w0 LOW-1 fix
+already shipped. fe-002 consumes `currentTargetPort()` directly and (per its `How we're doing
+it`) introduces **no second port-derivation and no looser predicate**, so:
+- A non-localhost or deceptive host (`http://localhost.evil.com` → port 80, fails the `(:|/|$)`
+  anchor) returns `null` ⇒ **gray, no probe fired** (AC1/AC10). A hostile page therefore
+  **cannot induce the extension to fan out fetches at all**, let alone to a host of its
+  choosing.
+- `findController(browserPort)` (`:97-109`) only ever targets the **fixed, hardcoded** range
+  `127.0.0.1:<7777 + i*10>` (`CONTROLLER_BASE`/`CONTROLLER_STEP`/`CONTROLLER_TRIES`); the only
+  page-influenced value is the `?port=` query arg, which is a localhost-gated integer. There is
+  **no SSRF vector** (target host/port is never derived from page content), and `tab.url` is
+  browser-authoritative (Chrome strips embedded userinfo; pushState stays same-origin), so a
+  green target cannot be spoofed by a hostile page. **No action — security-positive.**
+
+**INFO-2 — `/resolve` probe-storm (DoS axis) is already bounded by the PO-required
+single-flight + 30s TTL cache (acknowledged-and-mitigated).** Contrarian Finding 1 correctly
+identified that `refreshActiveTab()` is re-entrant from four overlapping sources and that,
+absent coordination, a fresh localhost load could fire ~80 `/resolve` fetches (2 × the
+40-fetch fan-out) on the normal AC3 gray path. The PO PROMOTE — per-port `_resolveInFlight`
+single-flight (set synchronously between `.has()` and probe-create, cleared in `finally`) +
+the `chrome.storage.session` TTL cache — collapses concurrent derives to one fan-out and
+serves repeats from cache. Net: the fan-out is **localhost-only, bounded (≤40 fetches/probe),
+single-flighted, and self-limiting once cached**. From a security standpoint this is a
+sufficient throttle for a local single-user tool; no separate rate-limit story warranted. I
+concur with the PO disposition — recording it here so the DoS axis reads as *assessed*.
+
+**LOW (accepted) — 30s stale-green window in the `storage.session` resolve cache.** Tampering/
+stale-trust axis: a `deck down` after a green resolve leaves a cached `resolve:<port>={resolved:
+true}` valid for ≤30s (or until the next reload busts it via `onUpdated status:'loading'`). The
+cache is **extension-owned, per-extension-isolated `chrome.storage.session`** — not writable by
+another extension or by page/MAIN-world JS — so it is a trust boundary only against the
+extension's own staleness, not an attacker. Bounded blast radius is a brief "looks capturable
+but save will report no controller," self-healing. Already documented as an accepted risk in
+this story (Cache-freshness note) and dispositioned by Contrarian/PO. **No new action.**
+
+**Checklist dispositions:** authn/authz (no new HTTP endpoint; `/resolve` consumed read-only,
+controller binds loopback; the localhost host-guard is the reused intrinsic authz), secrets,
+audit columns, soft-delete, CSRF (no `externally_connectable` → message API is web-unreachable),
+CORS, injection (IndexedDB keyed access, no query concat), tenant-isolation (single-user local
+tool) — all **N/A**. The new entry points (`tabs.onActivated`/`onUpdated`) are browser-internal
+events, **not web-reachable**, so they introduce no untrusted-caller boundary.
+
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=3, depends on STORY-fe-001)
+- 2026-06-19 — security-architect: appended `## Security Review` (INFO-1 SSRF/AC10 verified
+  against live guard; INFO-2 DoS bounded by single-flight+TTL; LOW stale-green accepted; N/A
+  checklist). Clean, no HIGH/CRITICAL.
 - 2026-06-19 — frontend-architect: folded PO arbitration (see `## Revisions`) into the
   body — added per-port single-flight on `resolvePortCached` (within-wake `_resolveInFlight`
   map, cleared in `finally`; AC9-framed; durable cache stays `storage.session`) per

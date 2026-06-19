@@ -382,6 +382,65 @@ first serialization. The reconcile half (Part 2) depends only on fe-001/fe-002.
   via kb's guarded `clearFlash`; residual now genuinely error-only cosmetic." No fe-003 code
   change; the unconditional-`clearFlash` evidence (bg.js:131-139 / :166-174) stays above as
   the audit trail. Closes the badge-flash episode.
+- 2026-06-19 — security-architect: appended `## Security Review` (INFO-1 untrusted
+  `storage.session` tick = no trust boundary + cosmetic-only-by-construction, the explicit
+  assessment requested by team-lead; INFO-2 key-filter loop closure; affirmed the two
+  Contrarian/PO accepted risks; N/A checklist). Clean, no HIGH/CRITICAL.
+
+## Security Review
+
+> security-architect STRIDE pass (single-feature-review), 2026-06-19. Grounded against live
+> `extension/background.js`: `emitReportCountChanged` (:53-56, null-guarded + optional-chained
+> fire-and-forget), the `clearFlash` guard (:130-147, DEF-001/`e87d247`), and the manifest
+> (no `externally_connectable`). Verdict: **clean — INFO only.** No HIGH/CRITICAL → no PO
+> arbitration needed.
+
+**INFO-1 — Consuming the inbound `reportCountChanged` `storage.session` tick crosses NO
+trust boundary; a forged tick is cosmetic-only by construction (Spoofing/Tampering-negative).**
+Team-lead explicitly asked me to assess whether an untrusted writer of the `reportCountChanged`
+key could mislead the badge. Findings:
+- `chrome.storage.session` is **per-extension isolated** — another extension cannot read or
+  write Snapdeck's session area, and page/MAIN-world JS (e.g. `content/capture.js`, the only
+  MAIN-world entry) has **no access to `chrome.storage` at all**. The manifest declares **no
+  `externally_connectable`**, so no external page can reach the extension's messaging/storage
+  surface. The only writer of `reportCountChanged` is Snapdeck's own service worker
+  (`emitReportCountChanged`, `:53-56`). So the tick is **not page- or cross-extension-spoofable**.
+- Even granting a hypothetical forged tick, the BOSS-elevated design requirement makes the tick
+  a **repaint nudge, never the source of truth**: `refreshActiveTab()` always re-reads the
+  authoritative count from the `getReport`/`GET_STATE` SSOT on every wake. A forged tick can at
+  most trigger a repaint that **re-reads the true count** — it cannot inject a false count. This
+  is the correct, defensible posture (lossy-by-design tick + SSOT reconcile); the
+  `droppedTick_wakeReconcilesFromGetState` case is also the security regression test for "a
+  manipulated/absent tick never drifts the badge." **No action — security-positive.**
+- Worst realistic impact of *any* tick anomaly is a stale **integer screenshot count** on a
+  local single-user toolbar — no PII, no token, no cross-origin data. Severity floor is
+  cosmetic.
+
+**INFO-2 — Strict `reportCountChanged` key-filter closes the self-trigger loop (DoS-negative).**
+`refreshActiveTab()` writes `resolve:<port>` to the *same* `chrome.storage.session` area on a
+cache miss, which itself fires `storage.session.onChanged`. The consumer's strict
+`changes.reportCountChanged` key-filter (ignoring `resolve:*` and every other key) prevents a
+paint→cache-write→onChanged→paint feedback loop (the BOSS-flagged loop). I confirm the filter is
+load-bearing and the `onChanged_keyFiltered_resolveCacheWriteNoRederive` unit case guards it.
+Even absent the filter the loop would be bounded (the resolve write only happens on a miss, and
+the second derive is a cache hit), but the filter makes it zero — keep it. **No action.**
+
+**Accepted risks (already dispositioned by Contrarian/PO — affirmed, no new action):**
+- *Idle dormant-SW blind spot* (Acknowledged Risk 1): a tick dropped on SW teardown self-heals
+  only at the next **wake event**; a user who captures then idles on the toolbar sees Chrome's
+  retained per-tab badge hold a stale (under-)count until the next interaction. Bounded,
+  low-consequence, never an over-count, always reconciled from the SSOT at the next wake.
+  Truth-in-labeling only; PO-accepted. Concur.
+- *Masked `!` error flash on an orange tab* (Contrarian Finding 2): an availability/feedback
+  degradation of released kb error signalling, not a confidentiality/integrity issue. Path to
+  fix is a BOSS-escalated released-code defect, not an in-feature edit. Out of my severity lane;
+  noted for PO visibility, no security action.
+
+**Checklist dispositions:** authn/authz, secrets, audit columns, soft-delete, rate-limit, CSRF
+(no `externally_connectable`), CORS, injection, XSS (no DOM/`innerHTML`; badge/title are native
+`action`-API sinks), tenant-isolation — all **N/A** for a `storage.session`-consumer that adds
+no HTTP endpoint, no DB write, and no page-reachable input. The new entry point
+(`storage.session.onChanged`) is a browser-internal, extension-scoped event — not web-reachable.
 
 ## Contrarian Findings
 

@@ -3,7 +3,7 @@ type: feature
 slug: w1-dynamic-icon-badge
 wave: 1
 parent_epic: snapdeck-ux-improvements
-status: planned
+status: in-progress
 created_at: 2026-06-18T00:00:00Z
 last_run_id: run-20260619-150619-36719
 depends_on: [w0-per-target-reports]
@@ -378,3 +378,7 @@ Domains an architect explicitly decided needed no work for this feature. The sen
 - **backend** — **Sentinel — no backend work.** The dynamic icon/badge feature requires zero change to
 - **database** — **No database changes required for this feature.** This is an explicit
 - **devops** — **No devops, asset-packaging, or manifest changes are required for this feature.**
+
+## History
+
+2026-06-19T21:43:33Z — orchestrator: status: 'planned' -> 'in-progress' (started via /mat_implement_feature (BOSS-mode, Wave-1 landing))

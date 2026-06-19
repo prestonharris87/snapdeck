@@ -93,6 +93,16 @@ does not add an in-product hint.
       unchanged (count unchanged) and produces **no** false success/error signal.
 - [ ] The localhost-only restriction is unchanged, and the binding remains
       user-rebindable via `chrome://extensions/shortcuts`.
+- [ ] <!-- added Phase 7.5 security-finalize: LOW-1 promoted to AC --> Rapid
+      repeated firing of the capture command is re-entrancy-safe: while a
+      shortcut-triggered capture/annotate is still in flight, a second press does
+      NOT start an overlapping capture (no second annotation overlay stacks), and
+      no screenshot is dropped by concurrent report writes — each completed
+      annotation appends exactly one screenshot. (Recommended realization: a
+      module-scope in-flight guard in the new `runCaptureCommand()` wrapper —
+      early-return when set, set before calling `addScreenshot()`, clear in a
+      `finally`; entirely within this feature's new code, does NOT touch the
+      out-of-scope report/IndexedDB seam.)
 
 ## E2E test spec (written by Product Owner)
 
@@ -136,6 +146,17 @@ does not add an in-product hint.
 **When** the user presses `Cmd/Ctrl+Shift+S` and then dismisses the annotation overlay without completing it
 **Then** the report still has N screenshots (unchanged)
 **And** no success signal and no error signal is shown for the cancelled action
+
+### Test: shortcut-reentrancy-guard-no-overlapping-captures
+
+<!-- added Phase 7.5 security-finalize: LOW-1 promoted to AC -->
+
+**Given** the extension is loaded and the user is on a focused `http://localhost/*` tab
+**And** the in-progress report currently has N screenshots
+**And** a shortcut-triggered capture/annotate is already in flight (overlay open, not yet completed)
+**When** the user presses `Cmd/Ctrl+Shift+S` again before completing the first annotation
+**Then** no second/overlapping capture is started (no second annotation overlay stacks)
+**And** after the user completes the single in-flight annotation, the report has exactly N+1 screenshots (none dropped by a concurrent report write)
 
 ### Test: capture-command-binding-is-focus-only
 

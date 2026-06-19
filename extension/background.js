@@ -222,6 +222,7 @@ async function addScreenshot() {
     annotations: resp.annotations || [],
     console: resp.console || [],
     network: resp.network || [],
+    model: resp.model ?? null,   // lossless editor model — local store only, NOT in saveReport() whitelist
   });
   await setReport(port, r);
   return { ok: true, count: r.screenshots.length };

@@ -118,7 +118,7 @@ In-browser, `editor.js` reads `window.__snapdeckEditorModel` (live because STORY
 - Create `extension/editor.model.test.mjs` (feature-prefixed per the cohort naming convention — avoids the
   shared `background.test.mjs` collision owned by w0-keyboard-shortcuts) using the built-in node test
   runner (`import { test } from "node:test"; import assert from "node:assert/strict";`) — **zero
-  dependencies**, no Konva/DOM. `unit-tester` runs it via `node --test extension/` (Phase 5a).
+  dependencies**, no Konva/DOM. `unit-tester` runs it via `node --test extension/*.test.mjs` (Phase 5a).
 - Leave the `editor.js` wiring to STORY-fe-003 (finish) and STORY-fe-004 (open) and the manifest
   registration to STORY-do-001 — keep this story's diff to the two new files.
 
@@ -136,7 +136,7 @@ In-browser, `editor.js` reads `window.__snapdeckEditorModel` (live because STORY
       never throws.
 - [ ] **Opaque items:** an item carrying an unknown extra field survives `serializeModel → deserializeModel`
       unchanged (forward-compat for w1/w2 subtype fields).
-- [ ] `node --test extension/` passes (all `extension/editor.model.test.mjs` cases green).
+- [ ] `node --test extension/*.test.mjs` passes (all `extension/editor.model.test.mjs` cases green).
 
 ## Motion contract
 
@@ -146,7 +146,7 @@ In-browser, `editor.js` reads `window.__snapdeckEditorModel` (live because STORY
 
 > **`node --test`, zero-dependency, `extension/editor.model.test.mjs`, NO Konva/DOM** — the BOSS HYBRID
 > lane. This story AUTHORS the file and OWNS the headless invariants; `unit-tester` runs them via
-> `node --test extension/` in Phase 5a. The through-the-real-editor round-trip stays in the browser-tester
+> `node --test extension/*.test.mjs` in Phase 5a. The through-the-real-editor round-trip stays in the browser-tester
 > E2E lane (STORY-fe-003/004). STORY-fe-003 references these same cases as the unit coverage of its
 > serialize/projection wiring.
 

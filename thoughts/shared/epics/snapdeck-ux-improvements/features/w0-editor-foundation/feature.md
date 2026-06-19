@@ -3,7 +3,7 @@ type: feature
 slug: w0-editor-foundation
 wave: 0
 parent_epic: snapdeck-ux-improvements
-status: planning
+status: planned
 created_at: 2026-06-18T00:00:00Z
 last_run_id: run-20260619-021434-24507
 depends_on: []
@@ -221,3 +221,9 @@ independent box + transformer stories). All `approved` after PO arbitration 2026
 ## Defects (populated as found)
 
 - (none yet)
+
+## No-work domains
+
+Domains an architect explicitly decided needed no work for this feature. The sentinel stories that recorded these decisions were pruned at the end of `/mat_write_feature`; the rationale is preserved here.
+
+- **database** — **No database changes required for this feature.**

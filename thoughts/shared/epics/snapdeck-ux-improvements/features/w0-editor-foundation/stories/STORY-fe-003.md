@@ -153,7 +153,7 @@ PNG: gate `annotated` on `model.length` (provably byte-identical for the frozen 
 
 > **HYBRID lane — both runners.** The pure serialize/projection invariants are asserted by the zero-dep
 > `node --test` suite at **`extension/editor.model.test.mjs`** (authored in STORY-fe-005; `unit-tester`
-> runs `node --test extension/` in Phase 5a). The wiring through the real `finish()` + Konva stage is the
+> runs `node --test extension/*.test.mjs` in Phase 5a). The wiring through the real `finish()` + Konva stage is the
 > browser-tester E2E lane (assertion-grade, kept). NO Konva/DOM in the `.test.mjs`.
 
 **`node --test` (unit lane — the serialize/projection behavior this story wires):**

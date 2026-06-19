@@ -168,16 +168,16 @@ n/a — service-worker storage change, no UI.
 
 ## Unit tests
 
-Runner: **`node --test extension/`** (BOSS hybrid ruling — zero-dep Node built-in `node:test` +
+Runner: **`node --test extension/*.test.mjs`** (BOSS hybrid ruling — zero-dep Node built-in `node:test` +
 `node:assert/strict`, ESM `*.test.mjs`, exactly as `.claude/scripts/__tests__/channel-size-warn.test.js`
 and w0-keyboard-shortcuts' `STORY-be-001` establish; no `package.json`, no jest/vitest). The E2E lane
 (browser-tester, real SW + IndexedDB) stays in addition to this unit lane. unit-tester Phase 5a runs
-`node --test extension/`.
+`node --test extension/*.test.mjs`.
 
 **Test file: `extension/background.editormodel.test.mjs`** — a **distinct** file, NOT
 `extension/background.test.mjs`. That latter file is created/owned by the same-wave
 w0-keyboard-shortcuts `STORY-be-001` (status: approved), which also edits `extension/background.js`.
-Using a separate `*.test.mjs` avoids a new-file merge collision; `node --test extension/` discovers
+Using a separate `*.test.mjs` avoids a new-file merge collision; `node --test extension/*.test.mjs` discovers
 both. Each `*.test.mjs` runs in its own process with a fresh `globalThis` + module cache, so the two
 files' stubs don't interfere. Mirror the keyboard-shortcuts file's harness shape (hand-written stubs;
 capture the registered listener).
@@ -258,7 +258,7 @@ Established via SendMessage rounds with `frontend-architect` and `database-archi
   (approved) also edits `extension/background.js` (adds a top-level `chrome.commands.onCommand`
   listener — an orthogonal region from my push-literal edit at lines 129-139) and creates
   `extension/background.test.mjs`. To avoid a new-file collision, this story's tests live in a
-  **distinct** file `extension/background.editormodel.test.mjs`; `node --test extension/` runs both. The
+  **distinct** file `extension/background.editormodel.test.mjs`; `node --test extension/*.test.mjs` runs both. The
   three same-wave editors of `background.js` (keyboard-shortcuts `onCommand`, per-target-reports
   `getReport`/`setReport` re-key, my `addScreenshot()` push literal) are non-overlapping line regions;
   BOSS sequences the merge window at push time.
@@ -275,7 +275,7 @@ Established via SendMessage rounds with `frontend-architect` and `database-archi
 - 2026-06-19 — backend-architect: unit-test filename LOCKED (BOSS-registered to the cohort) as
   `extension/background.editormodel.test.mjs`. Final cohort test-file names: `background.test.mjs`
   (keyboard-shortcuts) / `background.reports.test.mjs` (per-target-reports) /
-  `background.editormodel.test.mjs` (this story) — all distinct, `node --test extension/` discovers
+  `background.editormodel.test.mjs` (this story) — all distinct, `node --test extension/*.test.mjs` discovers
   all three.
 
 ## Revisions

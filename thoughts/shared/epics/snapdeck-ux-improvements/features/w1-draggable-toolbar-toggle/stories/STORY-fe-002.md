@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 3
-status: in-progress
+status: validated
 depends_on: [STORY-do-001]
 greenfield: false
 diff_estimate: substantive
@@ -204,6 +204,19 @@ Then:
   this story consumes at runtime) is live. (Transitively: do-001 → fe-001, the
   module author.)
 
+## Engineer Notes
+
+- **Smoke verification:** `.claude/state/dev-server.txt` does not exist — dev server not running. Smoke deferred to Phase 5 browser-tester E2E pass per team-lead guidance ("formal browser E2E is Phase 5 — not required now"). `Manual verification deferred — dev server not running; Phase 5 browser-tester E2E covers drag/persist/restore ACs.`
+- **Grip placement:** `buildToolbar()` appends `.snapdeck-grip` before any `btn()` call, making it the first child of `.snapdeck-toolbar`. `bar.grip` is exposed on the returned api object for `openEditor()` to wire.
+- **CSS grip:** CSS radial-gradient dot pattern (no emoji, no symbol-icon char, no inline SVG). `touch-action: none` added so pointer events are not absorbed by browser touch-scroll.
+- **First-drag conversion:** On `pointerdown` when `!_posConverted`, `getBoundingClientRect()` is used (returns viewport coords for `position:fixed` — no jump on grab, per contrarian verified-sound note). `_posConverted` is shared between the drag handler and the async storage callback so whichever fires first correctly sets the flag.
+- **Apply-on-open async:** `chrome.storage.local.get` callback fires after the synchronous DOM append completes, so `bar.el.offsetWidth/Height` is valid by the time it's queried. The toolbar paints at the default centered position for one frame, then jumps — accepted UX for a dev tool (contrarian Finding 1, accepted).
+- **Security (PROMOTE_TO_AC):** raw storage value always routes `parseStoredPos(raw)` → `null` check → `clampToViewport(pos, dims)` → numeric style write. No partial apply on `null`. `serializeToolbarPos` on write path returns `null` for non-finite inputs (belt-and-suspenders). Never writes a non-numeric to `style.left/top`.
+- **No CSS transition on toolbar left/top** (per motion contract — 1:1 pointer tracking, no easing lag).
+- **Manifest load-order test:** now fires fully (do-001 landed — `content/editor-chrome.js` registered between `editor-model.js` and `editor.js`). All 19 chrome tests pass including full ordering assertion.
+- **Cumulative test run:** `node --test extension/*.test.mjs` — 88/88 pass, 0 fail, 0 regression.
+- **`buildToolbar()` cross-feature serialization seam (from PO INFO note):** fe-003 adds `onToggleVisibility` + `setVisibility` to the same `buildToolbar()` body. No name collision with `grip`/`onTool`/`onUndo`/`onRedo`/`onDone`/`onCancel`/`setTool`/`setUndo`. fe-003 rebases on this commit.
+
 ## Cross-domain contract
 
 Established via peer messaging this run (mirrored to
@@ -225,6 +238,7 @@ Established via peer messaging this run (mirrored to
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=3, depends on STORY-do-001; consumes window.__snapdeckEditorChrome)
+- 2026-06-19T00:00:00Z — implemented (commit: 76e97c0) — Manual verification deferred — dev server not running; Phase 5 browser-tester E2E covers drag/persist/restore ACs.
 
 ## Contrarian Findings
 
@@ -337,3 +351,15 @@ the team-lead for BOSS so the second-to-merge engineer deliberately rebases on t
 first's `buildToolbar()` additions. No story change; flagged at STORIES_LOCKED.
 
 Status `pending → approved`.
+
+## Validation
+
+- result: validated
+- frontend-validator: validated — grab handle (.snapdeck-grip), DOM drag w/ first-drag transform conversion (_posConverted guard), pointer-capture + stopPropagation isolation, persist via serializeToolbarPos, apply-on-open trust boundary (parseStoredPos→clamp→numeric, default-centered on corrupt, no throw/partial). Frozen files untouched.
+- honesty-check-validator: passed — only editor.js/overlay.css/story touched; no test file modified/deleted/weakened; 88/88 pass, load-order guard fully firing.
+
+## History
+
+- 2026-06-19T16:36:16Z — orchestrator — validate validated (frontend-validator)
+- 2026-06-19T16:36:16Z — orchestrator — honesty passed (honesty-check-validator)
+- 2026-06-19T16:36:16Z — orchestrator — status in-progress → validated

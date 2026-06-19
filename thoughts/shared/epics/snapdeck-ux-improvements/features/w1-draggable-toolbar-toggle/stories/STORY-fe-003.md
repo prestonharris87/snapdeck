@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: approved
+status: in-progress
 depends_on: [STORY-do-001, STORY-fe-002]
 greenfield: false
 diff_estimate: substantive

@@ -364,6 +364,19 @@
       bar.onRedo = redo;
       bar.onDone = function () { finish(false); };
       bar.onCancel = function () { finish(true); };
+      // Visibility toggle (fe-003): pure view state — never in model / past / future.
+      var annShown = true;
+      bar.onToggleVisibility = function () {
+        annShown = ec.nextVisibility(annShown);
+        var v = ec.layerVisibility(annShown);
+        annLayer.visible(v.annVisible);
+        selectLayer.visible(v.selectVisible);
+        cursorLayer.visible(v.annVisible); // cursor tracks annVisible: PO arbitration (truly-raw view)
+        annLayer.batchDraw(); selectLayer.batchDraw(); cursorLayer.batchDraw();
+        bar.setVisibility(annShown);
+        // No snapshot(), no model mutation, no render() — toggling adds NO undo/redo step.
+      };
+      bar.setVisibility(true); // init button state to "shown"
       setTool("arrow");
 
       function finish(cancelled) {
@@ -377,6 +390,11 @@
           return;
         }
         selectedId = null; render();
+        // Export guard (fe-003): restore all 3 overlay layers before rasterizing so
+        // Done-while-hidden exports an annotated PNG byte-identical to the never-toggled path.
+        // In the common (never-toggled) path this is a no-op (layers already visible).
+        // Cancel branch returns before this line (editor.js:374-378), so guard is Done-path only.
+        annLayer.visible(true); selectLayer.visible(true); cursorLayer.visible(true);
         var annotated = stage.toDataURL({ pixelRatio: dpr });
         // Use the pure module (fe-003): byte-frozen lossy projection + lossless model (additive field)
         var em = window.__snapdeckEditorModel;
@@ -424,6 +442,9 @@
     var text = btn("T Text", "Add a text comment (click)");
     var box = btn("Box", "Draw a box (drag)"); // plain-text label per fe-001 (no emoji/inline SVG)
     var select = btn("⤢ Select", "Select / move / resize");
+    var sepVis = document.createElement("span"); sepVis.className = "snapdeck-sep"; el.appendChild(sepVis);
+    // Visibility toggle — plain-text "Hide"/"Show" label; no emoji / symbol-icon / inline SVG (fe-003).
+    var toggle = btn("Hide", "Hide the annotation layer");
     var sep1 = document.createElement("span"); sep1.className = "snapdeck-sep"; el.appendChild(sep1);
     var undo = btn("↶ Undo"); var redo = btn("↷ Redo");
     var sep2 = document.createElement("span"); sep2.className = "snapdeck-sep"; el.appendChild(sep2);
@@ -431,12 +452,19 @@
     var cancel = btn("✕ Cancel");
     var api = {
       el: el, grip: grip, onTool: null, onUndo: null, onRedo: null, onDone: null, onCancel: null,
+      onToggleVisibility: null,
       setTool: function (t) {
         [["arrow", arrow], ["text", text], ["box", box], ["select", select]].forEach(function (p) {
           p[1].classList.toggle("snapdeck-active", p[0] === t);
         });
       },
       setUndo: function (canUndo, canRedo) { undo.disabled = !canUndo; redo.disabled = !canRedo; },
+      // shown=true → label "Hide" (active state off); shown=false → label "Show" (active state on)
+      setVisibility: function (shown) {
+        toggle.textContent = shown ? "Hide" : "Show";
+        toggle.title = shown ? "Hide the annotation layer" : "Show the annotation layer";
+        toggle.classList.toggle("snapdeck-active", !shown);
+      },
     };
     arrow.onclick = function () { api.onTool && api.onTool("arrow"); };
     text.onclick = function () { api.onTool && api.onTool("text"); };
@@ -446,6 +474,7 @@
     redo.onclick = function () { api.onRedo && api.onRedo(); };
     done.onclick = function () { api.onDone && api.onDone(); };
     cancel.onclick = function () { api.onCancel && api.onCancel(); };
+    toggle.onclick = function () { api.onToggleVisibility && api.onToggleVisibility(); };
     api.setUndo(false, false);
     return api;
   }

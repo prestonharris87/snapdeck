@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 3
-status: pending
+status: approved
 depends_on: [STORY-fe-001]
 created_at: 2026-06-19T00:00:00Z
 last_run_id: run-20260619-150619-36719
@@ -34,7 +34,9 @@ modified; the cache is the only new persisted surface (session-scoped, MV3-safe)
 
 This story delivers the three **steady states** on tab activation/update + per-tab
 isolation + restart re-derivation. The **live** count increment on capture and the
-transient-flash reconcile are **STORY-fe-003** (held pending a team-lead ruling).
+transient-flash reconcile are **STORY-fe-003** (final). Per PO arbitration (Contrarian
+Finding 1, see `## Revisions`) this story also adds **per-port single-flight** on the
+`/resolve` probe so concurrent derives collapse to one fan-out.
 
 ## What it should look like
 
@@ -44,15 +46,31 @@ New top-level section in `background.js` (below released code, below fe-001's se
 // --- tab-driven icon derivation (w1-dynamic-icon-badge) ----------------------
 const RESOLVE_TTL_MS = 30000;  // green/gray resolution cache TTL (self-heals deck up/down)
 
+// Per-port single-flight for the /resolve fan-out (PO-required, Contrarian Finding 1).
+// WITHIN-WAKE coordination only: a transient promise cleared on settle (finally) and lost
+// on SW teardown — NOT durable state, and it does NOT relocate the resolution cache out of
+// storage.session (AC9 intact; same category as fe-001's pure ImageData memo).
+const _resolveInFlight = new Map();  // port -> Promise<boolean>
+
 // Two-tier resolution with a chrome.storage.session cache keyed by browser port.
 async function resolvePortCached(port) {
   const key = `resolve:${port}`;
   const hit = (await chrome.storage.session.get(key))[key];
   if (hit && (Date.now() - hit.ts) < RESOLVE_TTL_MS) return hit.resolved;  // cache hit → NO probe
-  const ctrlPort = await findController(port);          // released seam — the ONLY probe
-  const resolved = ctrlPort != null;
-  await chrome.storage.session.set({ [key]: { resolved, ts: Date.now() } });
-  return resolved;
+  // single-flight: concurrent derives for the SAME port share ONE findController fan-out.
+  // CRITICAL: no `await` between the .has() check and the .set(), so a later-resuming
+  // caller always observes the in-flight entry — collapses onActivated+onUpdated (and
+  // tick/cold-start) bursts to a single ~40-fetch probe (AC12).
+  if (_resolveInFlight.has(port)) return _resolveInFlight.get(port);
+  const probe = (async () => {
+    const ctrlPort = await findController(port);        // released seam — the ONLY probe
+    const resolved = ctrlPort != null;
+    await chrome.storage.session.set({ [key]: { resolved, ts: Date.now() } });
+    return resolved;
+  })();
+  _resolveInFlight.set(port, probe);
+  try { return await probe; }
+  finally { _resolveInFlight.delete(port); }   // cleared on settle → post-TTL/invalidation re-probes
 }
 
 async function invalidateResolveCache(port) {
@@ -77,8 +95,8 @@ async function refreshActiveTab() {
 
 // Top-level listeners — registered SYNCHRONOUSLY at module scope (AC8).
 // NOTE the double `?.` (`onActivated?.addListener?.`) — see "Defensive registration".
-chrome.tabs.onActivated?.addListener?.(() => { void refreshActiveTab(); });
-chrome.tabs.onUpdated?.addListener?.((tabId, changeInfo, tab) => {
+chrome.tabs?.onActivated?.addListener?.(() => { void refreshActiveTab(); });
+chrome.tabs?.onUpdated?.addListener?.((tabId, changeInfo, tab) => {
   if (!tab || !tab.active) return;               // best-effort: only the active tab
   if (changeInfo.status === "loading") { void (async () => {
     await invalidateResolveCache(await currentTargetPort());  // reload re-probes (deck up after the fact)
@@ -123,8 +141,9 @@ posture. (Document as an accepted risk; flagged for Contrarian 5.5.)
   are **reused unchanged** — NOT edited. No second port-derivation and no looser
   localhost predicate is introduced (AC10). The released global-badge flash is untouched.
 - **Explicitly changing:** ADD `chrome.tabs.onActivated`/`onUpdated` listeners,
-  `refreshActiveTab()`, `resolvePortCached()` (+ `chrome.storage.session` cache),
-  `invalidateResolveCache()`, `RESOLVE_TTL_MS`.
+  `refreshActiveTab()`, `resolvePortCached()` (+ `chrome.storage.session` cache +
+  per-port single-flight map `_resolveInFlight`), `invalidateResolveCache()`,
+  `RESOLVE_TTL_MS`.
 - **Verified:** 2026-06-19 (read `background.js` end-to-end; confirmed contracts with
   backend-architect + database-architect — see Cross-domain contract).
 
@@ -142,9 +161,23 @@ posture. (Document as an accepted risk; flagged for Contrarian 5.5.)
 - **Count source (AC10, per database-architect):** read the count via `getReport(port)`
   → `screenshots.length` consistently. Do NOT fork a second count read (e.g. don't also
   go through the `GET_STATE` message in one place and `getReport` in another).
+- **Per-port single-flight (AC12, PO-required — Contrarian Finding 1):** `refreshActiveTab`
+  is re-entrant from FOUR overlapping sources (`onActivated`, `onUpdated` loading+complete,
+  fe-003's tick consumer, fe-003's cold-start re-derive). Without single-flight, a fresh
+  localhost load fires `onActivated`+`onUpdated` derives that BOTH miss the cache and BOTH
+  run `findController` (~40 fetches each → ~80 for an unowned port — the normal gray path).
+  The `_resolveInFlight` map (keyed by port, set synchronously between the `.has` check and
+  the probe creation, **cleared in `finally`**) collapses concurrent derives to ONE fan-out.
+  **AC9 framing for the validator:** this map is *within-wake coordination only* — a
+  transient promise, cleared on settle, lost on SW teardown (re-derived on wake); it does
+  NOT relocate the durable resolution cache out of `chrome.storage.session`. Validator
+  confirms: (a) keyed by port, (b) cleared-on-settle in a `finally`, (c) durable cache stays
+  `chrome.storage.session`.
 - **Defensive registration (load-bearing — do NOT skip the `?.`):** register the new
-  top-level listeners as `chrome.tabs.onActivated?.addListener?.(...)` /
-  `chrome.tabs.onUpdated?.addListener?.(...)` (double optional-chain). Reason: the
+  top-level listeners as `chrome.tabs?.onActivated?.addListener?.(...)` /
+  `chrome.tabs?.onUpdated?.addListener?.(...)` (**root-guarded** optional-chain — guards
+  `chrome.tabs` itself, for guard-depth parity with fe-003's `chrome.storage?.session?.…`,
+  per Contrarian Finding 2). Reason: the
   **released** sibling unit suites (`background.reports.test.mjs`,
   `background.shortcuts.test.mjs`, `background.editormodel.test.mjs`) load this same
   MERGED `background.js` into a `node:vm` against a MINIMAL hand-written `chrome` mock.
@@ -180,6 +213,10 @@ posture. (Document as an accepted risk; flagged for Contrarian 5.5.)
 - [ ] Localhost tab + controller answers `/resolve` `{ok:true}` → green; result cached in
       `chrome.storage.session` keyed by port; a second activation within TTL fires **no**
       new probe (AC2, AC12).
+- [ ] (PO-required, single-flight) two overlapping `refreshActiveTab()` for the SAME
+      uncached localhost port → `findController` invoked **exactly once** (AC12); the
+      `_resolveInFlight` entry is cleared on settle (a later post-TTL/post-invalidation
+      derive re-probes); durable resolution cache remains `chrome.storage.session` (AC9).
 - [ ] Localhost tab, `findController` → null → gray (AC3).
 - [ ] Report `count > 0` for the resolved target → orange + badge = count (AC4); `count===0`
       → green (AC2).
@@ -218,6 +255,12 @@ icon/OffscreenCanvas stubs so `applyIconState` runs. Reset all between tests (`b
 - `extension/background.icon-badge.test.mjs` — `refreshActiveTab_localhostController_greenCached` —
   localhost:5101 + `/resolve` `{ok:true}` → green; `resolve:5101` written to session; a
   second `refreshActiveTab` fires **no** additional `/resolve` fetch (AC2/AC12).
+- `extension/background.icon-badge.test.mjs` — `resolvePortCached_singleFlight_oneProbeForConcurrentDerives` —
+  (PO-required, Contrarian Finding 1) override `sandbox.findController` with a call-counting
+  stub that resolves after a microtask; fire two overlapping `refreshActiveTab()` (or
+  `resolvePortCached(5101)`) for the SAME uncached localhost port; assert `findController` is
+  invoked **exactly once** (the in-flight map collapses the concurrent fan-out). Then assert
+  a third derive AFTER settle re-probes (entry cleared in `finally`) → count === 2.
 - `extension/background.icon-badge.test.mjs` — `refreshActiveTab_localhostNoController_gray` —
   no controller answers → gray (AC3).
 - `extension/background.icon-badge.test.mjs` — `refreshActiveTab_reportCountPositive_orange` —
@@ -255,6 +298,11 @@ feature); no in-feature be/db/do producer story to depend on.
 ## History
 
 - 2026-06-19 — created by frontend-architect (effort=3, depends on STORY-fe-001)
+- 2026-06-19 — frontend-architect: folded PO arbitration (see `## Revisions`) into the
+  body — added per-port single-flight on `resolvePortCached` (within-wake `_resolveInFlight`
+  map, cleared in `finally`; AC9-framed; durable cache stays `storage.session`) per
+  Contrarian Finding 1, deepened listener guards to root `chrome.tabs?.onActivated?.` per
+  Finding 2, + a validation item and the `resolvePortCached_singleFlight_*` unit case.
 
 ## Contrarian Findings
 
@@ -322,3 +370,62 @@ This is explicitly inside scope.md's "Multi-window perfection beyond per-`tabId`
 **Recommendation:** no change required — record as the conscious scope boundary it already
 is. (A `windows.onFocusChanged → refreshActiveTab` listener would be a cheap future
 enhancement if multi-window freshness is ever pulled into scope.)
+
+## Revisions
+
+### 2026-06-19 — product-owner arbitration (Contrarian dispositions)
+
+**Finding 1 (`/resolve` probe storm — no single-flight) → PROMOTE to a fe-002 requirement
+(not a bare acknowledge).** `refreshActiveTab()` is re-entrant from four overlapping sources
+(`onActivated`, `onUpdated` loading+complete, fe-003's tick consumer, fe-003's cold-start
+re-derive on every SW wake). On a fresh localhost navigation, concurrent derives both miss the
+`chrome.storage.session` cache and both call the released `findController()`
+(`CONTROLLER_TRIES` ≈ 40 fetches) → up to ~80 `/resolve` fetches for an **unowned** localhost
+port — the normal AC3 gray path. That directly threatens **AC12** (responsive, no sluggish
+switch), spams the controller, and makes the feature.md "exactly one probe" E2E a
+single-event-harness artifact. The fix is cheap and lives entirely in fe-002's NEW code (no
+released seam touched), so PROMOTE is scope-clean.
+
+**Required mechanism — per-port single-flight on the `findController` call in
+`resolvePortCached`:**
+- An in-flight `Promise` map keyed by browser port. On a cache miss, before calling
+  `findController(port)`: if a probe for that port is already in flight, **await the existing
+  promise**; otherwise store the new `findController(port)` promise in the map.
+- **Delete the map entry in a `finally`** when the promise settles, so a later genuinely-fresh
+  derive (post-TTL / post-invalidation) re-probes.
+- **AC9 is NOT violated.** The single-flight map is *within-wake coordination only* — it holds
+  a transient promise for the duration of one probe and is cleared on settle; it is lost on SW
+  teardown and a fresh derive re-probes on wake. It does **not** relocate the durable
+  resolution cache out of `chrome.storage.session` (that stays the resolution source of truth).
+  Same category as fe-001's pure icon-`ImageData` memo, not the cross-event mutable state AC9
+  forbids. **Validator must confirm:** (a) keyed by port, (b) cleared-on-settle in a `finally`,
+  (c) durable cache remains `chrome.storage.session`.
+- **Add a validates item + unit test:** under a call-counting `findController` stub, fire two
+  overlapping `refreshActiveTab()` for the same uncached localhost port and assert
+  `findController` is invoked **exactly once** (single-flight collapses the concurrent fan-out).
+
+The precise code-spec + unit case is being authored into the story body by the
+**frontend-architect** (PO-routed, warm-team) for engineer-readiness; **this Revisions block is
+the binding contract** and stands even if that edit lags.
+
+**Finding 2 (info — guard-depth asymmetry) → fold in.** Deepen the top-level listener guards
+from `chrome.tabs.onActivated?.` / `chrome.tabs.onUpdated?.` to **`chrome.tabs?.onActivated?.`
+/ `chrome.tabs?.onUpdated?.`** for guard-depth parity with fe-003's root-guarded registrations.
+One-character change, no behavior change in the real worker (where `chrome.tabs` always
+exists); hardens against a future frozen/released suite whose mock omits `chrome.tabs`. Folded
+into the frontend-architect's same fe-002 edit.
+
+**Finding 3 (info — multi-window `{currentWindow:true}` best-effort) → accept as the existing
+scope boundary; no change.** scope.md explicitly scopes out "multi-window perfection beyond
+per-`tabId` correctness (best-effort across windows)"; the Contrarian verified it is
+self-consistent (every paint reads its own tab's port; only non-focused windows go stale).
+Recorded so the audit trail shows PO consciously accepted it; a `windows.onFocusChanged →
+refreshActiveTab` listener is the cheap future enhancement if multi-window freshness is ever
+pulled into scope.
+
+**E2E reconciliation (feature.md):** the "Localhost target … → green (cached)" test's "exactly
+one `/resolve` probe" assertion is **preserved** — now *justified by the single-flight mechanism
+above* (concurrent first-load `onActivated`+`onUpdated` derives collapse into one
+`findController` fan-out) rather than being a single-event-harness artifact. feature.md updated.
+
+Status: pending → approved.

@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: devops-engineer
 author_architect: devops-architect
 effort: 1
-status: pending
+status: approved
 sentinel: true
 depends_on: []
 diff_estimate: none

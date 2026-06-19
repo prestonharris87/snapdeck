@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: [STORY-fe-001, STORY-fe-002]
 created_at: 2026-06-19T00:00:00Z
 last_run_id: run-20260619-150619-36719
@@ -381,3 +381,77 @@ require a BOSS-escalated released-code defect.
 `## Acknowledged Risk` block, because it is a behavior-visible regression of released feedback
 (not merely an internal trade-off). If PO judges silent capture-errors-on-orange unacceptable,
 the path is a BOSS-escalated defect against the released kb code, **not** an in-feature edit.
+
+## Acknowledged Risk
+
+### 2026-06-19 — product-owner arbitration (Contrarian dispositions)
+
+**Risk 1 (Contrarian Finding 1) — "self-heals at the next wake" overstates coverage; idle
+dormant-SW blind spot. ACKNOWLEDGED (truth-in-labeling; no code change).**
+The robustness claim "any dropped tick self-heals at the next wake" is **qualified here**: the
+only realistic tick drop is SW-teardown-coupled (the un-awaited `chrome.storage.session.set` in
+the w0 `emitReportCountChanged`), and the cold-start re-derive that heals it runs only when the
+SW **next wakes** — and an MV3 SW wakes only on an event. Precise coverage: **a dropped tick
+self-heals at the next wake *event* (tab switch / reload / popup open / any tab event); a user
+who captures and then idles on the toolbar with no event sees Chrome's retained per-`tabId`
+badge hold the stale (under-)count until their next interaction.** Bounded and low-consequence
+(the user just captured, so they know they did; the count is always reconciled from the
+`getReport`/`GET_STATE` SSOT at the next wake; never an over-count), squarely within scope's
+best-effort / lossy-tick posture. This block **supersedes the unqualified "next wake" language**
+in the Part-1 design-requirement block and clarifies that
+`droppedTick_wakeReconcilesFromGetState` proves heal-*on*-wake (not heal-while-idle), so the
+blind spot is accepted consciously rather than believed away. **PO-accepted.**
+
+Status: pending → approved.
+
+## Deferred Decision — BOSS decides at STORIES_LOCKED (route as kb released-code defect vs accept)
+
+### 2026-06-19 — product-owner (Contrarian Finding 2; team-lead/BOSS-directed)
+
+**Orange-tab capture errors are silent — the per-`tabId` count badge shadows kb's released
+GLOBAL `!` error flash. This is NOT resolved and NOT accepted here — it is DEFERRED to BOSS at
+STORIES_LOCKED.**
+
+**Full interaction (the hidden coupling):**
+- The released `runCaptureCommand()` (grep the symbol in `extension/background.js`; the `!`/`✓`
+  flash block is ~`:140-156` at commit `6512a12` — line cites have drifted, grep by symbol)
+  sets a **GLOBAL** (no-`tabId`) `chrome.action` badge: red `!` (`#C0392B`) + an error
+  `setTitle` on failure, green `✓` (`#1E8E3E`) on success, each on a `setTimeout` reset.
+- Chrome resolves the action badge **per tab**: a tab-specific badge value takes precedence over
+  the global value for that tab. This feature sets a tab-specific orange **count** badge on a
+  report-in-progress (orange) tab.
+- **Consequence:** on an orange tab, the released global `!` error flash (and its global error
+  `setTitle`) are **shadowed** by this feature's tab-specific count badge. A capture **failure**
+  on that tab therefore shows **no `!` signal** — the user's only cue is the count not
+  incrementing. This is a behavior-visible degradation of released `w0-keyboard-shortcuts` error
+  feedback, scoped to tabs already holding ≥1 unsaved screenshot. (The success `✓` being shadowed
+  is benign — the count IS the success signal — only the error case loses its signal.)
+
+**Why it cannot be fixed inside this feature:** fe-003 has no signal that a capture *failed*
+(the w0 `reportCountChanged` tick fires only on a count change, never on failure), and per scope
+directive #4 / AC11 `runCaptureCommand()` is RELEASED `w0-keyboard-shortcuts` code this feature
+must not edit. The only real fixes live OUTSIDE this feature's boundary → a BOSS call.
+
+**Proposed released-code fix (for BOSS to route — NOT an in-feature edit):** have kb's
+`runCaptureCommand()` set its `!`/`✓` flash on the **active tab's `{tabId}`** (and clear it
+per-tab on the `setTimeout` reset) instead of the global no-`tabId` badge. The kb flash then
+becomes itself a tab-specific value and is no longer shadowed by — nor fighting — this feature's
+per-`tabId` count badge. Small kb-side edit, routed as a **released-work defect against
+`w0-keyboard-shortcuts`** if BOSS chooses to fix rather than accept. (Sequencing nuance for the
+implementer: on an orange tab the kb `!` and the orange count would then both be tab-specific —
+the fix should define which wins during the brief flash window, e.g. let the `!` show then
+re-assert the count on reset, the same steady-state-after-flash discipline this feature already
+owns in AC11.)
+
+**BOSS decision needed at STORIES_LOCKED — pick one:**
+- **(a) Accept** the silent-orange-tab-error as a bounded best-effort gap — rare trigger (a
+  failure on a tab that *just* captured successfully: content script already loaded, target
+  already resolved) plus the soft count-not-moving cue. If accepted, the revisit triggers still
+  apply: re-open if `w2-screenshot-gallery` revisits orange-tab error feedback, if
+  capture-failure-on-orange becomes common, or if a user reports a silently-failed capture.
+- **(b) Route the kb released-code defect** above (tab-scope the flash).
+
+NOT closed here. Surfaced into the decision-memo (Phase 6.5 reads this story) so the BOSS
+decision is on the record. fe-003's own diff is unaffected by either outcome (it never edits kb
+code); only the optional kb-side defect is deferred — so the story stays `approved` while this
+decision remains open.

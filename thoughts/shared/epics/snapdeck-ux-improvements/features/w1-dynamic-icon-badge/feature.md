@@ -232,9 +232,12 @@ probe at all — instant gray)
 **Given** tab A is `http://localhost:5101` and a Snapdeck controller answers
 `/resolve?port=5101` with `{ ok: true }`, and A's report is empty (`count: 0`)
 **When** tab A is activated for the first time
-**Then** exactly one `/resolve` probe resolves to the owning controller, the resolution is
-cached in `chrome.storage.session` keyed by port `5101`, and tab A's icon is set **green**
-with an empty badge
+**Then** exactly one `/resolve` probe resolves to the owning controller — even if `onActivated`
+and `onUpdated(complete)` both fire on this first load, fe-002's **per-port single-flight**
+collapses the concurrent derives into a single `findController` fan-out, so "exactly one probe"
+holds in the real browser, not only the single-event unit harness — the resolution is cached in
+`chrome.storage.session` keyed by port `5101`, and tab A's icon is set **green** with an empty
+badge
 **When** the user switches away and later re-activates tab A (still resolved, still empty)
 **Then** tab A is set **green** again from the `chrome.storage.session` cache and **no**
 new `/resolve` probe is fired (cache hit)

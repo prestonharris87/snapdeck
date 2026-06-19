@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: []
 created_at: 2026-06-19T00:00:00Z
 last_run_id: run-20260619-150619-36719

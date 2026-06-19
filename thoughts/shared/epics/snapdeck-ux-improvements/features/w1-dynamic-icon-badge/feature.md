@@ -327,6 +327,28 @@ target**, the icon is set **gray**, the badge is empty, and **no** `/resolve` pr
 fired (it is not localhost) — the icon path uses the same single source of truth as the
 released w0 read/write gate, so a deceptive host never reads as a green target
 
+### Test: Badge reconciles after a dropped count-tick
+
+> Contract (BOSS-ratified): the live-count trigger is a best-effort, lossy
+> `chrome.storage.session` tick (`{ reportCountChanged: { port, count, ts } }`)
+> that `w0-per-target-reports` emits after each report-count change; fe-003
+> consumes it via a key-filtered `storage.session.onChanged` listener. The tick is
+> a **repaint nudge only, never the source of truth** — the badge's authoritative
+> count is always the released `GET_STATE { count, port }`, reconciled on every wake
+> (SW cold-start + `tabs.onActivated`/`onUpdated`). A dropped tick must never leave
+> the badge drifted. Pairs with fe-003's `droppedTick_wakeReconcilesFromGetState`
+> unit case.
+
+**Given** the current target (port P) has an in-progress report with N screenshots
+and its tab is active (badge orange, count N)
+**When** a screenshot is added but the `reportCountChanged` `storage.session` tick is
+**not** delivered (dropped on SW teardown mid-write, lost to a session wipe, or a
+same-ms `ts` collision), and then a wake event fires (SW cold-start, or
+`tabs.onActivated`/`onUpdated` for that tab)
+**Then** the badge reconciles from the released `GET_STATE { count, port }` to the
+correct count (N+1) — it never drifts from the authoritative report count, because the
+tick is only a repaint nudge
+
 ### Motion E2E (required for any UI feature; write `n/a` for backend-only)
 
 n/a — this feature is service-worker / `action`-API work with `frontend_lane: N/A`. The

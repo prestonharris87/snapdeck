@@ -7,7 +7,7 @@ parent_epic: snapdeck-ux-improvements
 parent_feature: w1-draggable-toolbar-toggle
 assignee: devops-engineer
 author_architect: devops-architect
-status: approved
+status: in-progress
 created_at: 2026-06-19T15:40:00Z
 last_run_id: run-20260619-042600-10898
 defects: []
@@ -294,3 +294,13 @@ inserted between `editor-model.js` and `editor.js`, matching the released w0
 STORY-do-001 precedent (identical one-element registration of `editor-model.js`). No
 permission / `host_permissions` / `web_accessible_resources` / `commands` delta. No
 change. Status `pending → approved`.
+
+## History
+
+2026-06-19T16:00:00Z — implemented (inserted `"content/editor-chrome.js"` into `extension/manifest.json` `content_scripts[1].js` array between `editor-model.js` and `editor.js`; JSON valid; `node --test extension/*.test.mjs` 75/75 pass including load-order guard #49)
+
+## Engineer Notes
+
+- **Diff:** exactly one `js`-array element added to the `document_idle` isolated-world entry. No permission, `host_permissions`, `web_accessible_resources`, `commands`, or world changes.
+- **Load-order guard (#49):** previously staged/if-present (file was absent); now fires and passes — `index(editor-model) < index(editor-chrome) < index(editor)` and all four `js` paths resolve on disk.
+- **Full suite:** 75/75 pass — no regressions.

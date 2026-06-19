@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: validated
+status: released
 depends_on: [STORY-fe-001, STORY-fe-003, STORY-fe-005, STORY-do-001, STORY-be-001]
 created_at: 2026-06-19T03:30:00Z
 last_run_id: run-20260619-021434-24507
@@ -184,6 +184,7 @@ Implementation notes:
 - 2026-06-19 — created by frontend-architect (effort=2)
 - 2026-06-19 — revised by frontend-architect for BOSS HYBRID ruling: hydrate via pure deserializeModel (STORY-fe-005); depends_on now [STORY-fe-001, STORY-fe-003, STORY-fe-005, STORY-do-001, STORY-be-001]
 - 2026-06-19 — implemented (commit: 4e29db1)
+2026-06-19T15:02:27Z — BOSS: status: 'validated' -> 'released' (Released via Wave-0 PR #1 (merge 5526403))
 
 ## Security Review
 

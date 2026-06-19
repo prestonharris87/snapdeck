@@ -47,6 +47,14 @@ async function setReport(port, r) {
 }
 async function clearReport(port) { await setReport(port, EMPTY_REPORT()); }
 
+// Emit a storage.session tick whenever the report count for a port changes.
+// Optional-chained so it no-ops cleanly when chrome.storage is absent (the
+// frozen vm harnesses have no storage key — invariant 2).
+function emitReportCountChanged(port, count) {
+  if (port == null) return;                       // null-port guard (load-bearing at site 3)
+  chrome.storage?.session?.set?.({ reportCountChanged: { port, count, ts: Date.now() } });
+}
+
 // --- helpers -----------------------------------------------------------------
 function portOfUrl(url) {
   try {
@@ -109,6 +117,70 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // --- keyboard shortcut command -----------------------------------------------
 let captureInFlight = false;
 
+// Per-tabId flash bookkeeping (DEF-001 — badge-flash shadow fix).
+// The capture-result `!`/`✓` flash is scoped to the active tab's tabId so it
+// takes precedence over any per-tab steady-state badge another feature paints on
+// that tab (e.g. the report-in-progress count badge). On teardown we clear that
+// tab's badge ONLY IF it still shows our own flash (guarded) — so a steady-state
+// repaint (the live count) survives the flash (AC5). The steady-state owner
+// re-asserts via its own wake-reconcile (DEF-001 option c — no seam / no storage).
+let flashTabId = null; // tab currently showing a kb flash (null = none / global)
+let flashTimer = null; // pending teardown timer id
+
+/** Clear kb's flash on `tabId` — GUARDED. Only clears if the badge STILL shows
+ *  kb's own `✓`/`!`; if the steady-state owner has already repainted that tab
+ *  (e.g. the report-in-progress count), leave it — blanking it would drop the
+ *  live count (AC5). On a read failure, default to NOT clearing (never blank a
+ *  badge we can't confirm is ours). Falls back to the global badge when no tab
+ *  was resolved. Async: it reads the current badge text before deciding. */
+async function clearFlash(tabId) {
+  const target = tabId == null ? {} : { tabId };
+  let current;
+  try {
+    current = await chrome.action.getBadgeText(target);
+  } catch (_) {
+    return; // can't confirm the badge is ours → leave it (never blank the count)
+  }
+  if (current !== "✓" && current !== "!") return; // steady-state owner repainted
+  chrome.action.setBadgeText({ ...target, text: "" });
+  chrome.action.setTitle({ ...target, title: "Snapdeck" });
+}
+
+/** Cancel any pending flash teardown and clear its tab immediately. Run at the
+ *  start of a new invocation so a still-showing prior flash is handed back —
+ *  WITHOUT blanking the *current* tab's steady-state badge (no destructive
+ *  pre-clear: a cancelled / in-flight capture must leave the count intact). */
+function cancelPendingFlash() {
+  if (flashTimer !== null) {
+    clearTimeout(flashTimer);
+    flashTimer = null;
+  }
+  if (flashTabId !== null) {
+    const prev = flashTabId;
+    flashTabId = null;
+    void clearFlash(prev); // guarded + fire-and-forget; never blanks a repaint
+  }
+}
+
+/** Paint kb's `!`/`✓` flash on `tabId` (or the global badge when tabId is null). */
+function setFlash(tabId, text, color, title) {
+  const target = tabId == null ? {} : { tabId };
+  chrome.action.setBadgeText({ ...target, text });
+  chrome.action.setBadgeBackgroundColor({ ...target, color });
+  if (title != null) chrome.action.setTitle({ ...target, title });
+}
+
+/** Schedule kb's flash on `tabId` to self-clear (guarded) after `ms`. */
+function scheduleFlashClear(tabId, ms) {
+  flashTabId = tabId;
+  flashTimer = setTimeout(async () => {
+    flashTimer = null;
+    const t = flashTabId;
+    flashTabId = null;
+    await clearFlash(t);
+  }, ms);
+}
+
 chrome.commands.onCommand.addListener((command) => {
   if (command !== "capture-screenshot") return;
   // fire-and-forget; result is surfaced via the action badge, not a return value
@@ -119,44 +191,38 @@ async function runCaptureCommand() {
   if (captureInFlight) return;
   captureInFlight = true;
   try {
-    // Neutral badge reset at start of every invocation so a prior error badge
-    // never lingers and a cancelled run ends neutral.
-    chrome.action.setBadgeText({ text: "" });
-    chrome.action.setTitle({ title: "Snapdeck" });
+    // Hand back any still-showing prior flash (cancel its timer + clear its tab).
+    // We deliberately do NOT blank the *current* tab here.
+    cancelPendingFlash();
+
+    // Resolve the active tab so the flash is scoped to it (per-tabId precedence).
+    let tabId = null;
+    try {
+      const tab = await activeTab();
+      if (tab && tab.id != null) tabId = tab.id;
+    } catch (_) {
+      tabId = null; // fall back to a global flash (still non-silent)
+    }
+
     let result;
     try {
       result = await addScreenshot();
     } catch (e) {
       // INFO-2: a thrown error (e.g. unexpected chrome.tabs rejection) is also
       // a non-silent failure — map it onto the same red "!" error badge.
-      chrome.action.setBadgeText({ text: "!" });
-      chrome.action.setBadgeBackgroundColor({ color: "#C0392B" });
-      chrome.action.setTitle({ title: e.message || String(e) });
-      setTimeout(() => {
-        chrome.action.setBadgeText({ text: "" });
-        chrome.action.setTitle({ title: "Snapdeck" });
-      }, 4000);
+      setFlash(tabId, "!", "#C0392B", e.message || String(e));
+      scheduleFlashClear(tabId, 4000);
       return;
     }
     if (result && result.error) {
-      chrome.action.setBadgeText({ text: "!" });
-      chrome.action.setBadgeBackgroundColor({ color: "#C0392B" });
-      chrome.action.setTitle({ title: result.error });
-      setTimeout(() => {
-        chrome.action.setBadgeText({ text: "" });
-        chrome.action.setTitle({ title: "Snapdeck" });
-      }, 4000);
+      setFlash(tabId, "!", "#C0392B", result.error);
+      scheduleFlashClear(tabId, 4000);
     } else if (result && result.ok) {
-      chrome.action.setBadgeText({ text: "✓" });
-      chrome.action.setBadgeBackgroundColor({ color: "#1E8E3E" });
-      setTimeout(() => {
-        chrome.action.setBadgeText({ text: "" });
-        chrome.action.setTitle({ title: "Snapdeck" });
-      }, 2000);
+      setFlash(tabId, "✓", "#1E8E3E", null);
+      scheduleFlashClear(tabId, 2000);
     }
-    // { cancelled: true }: neutral reset already applied at start; no additional
-    // badge signal — the net effect is neutral (satisfies the cancelled-no-false-
-    // signal AC).
+    // { cancelled: true }: no badge change at all — the tab's steady-state badge
+    // is left intact (no false signal; report count preserved).
   } finally {
     captureInFlight = false;
   }
@@ -181,9 +247,12 @@ async function handle(msg) {
       return addScreenshot();
     case "SAVE_REPORT":
       return saveReport();
-    case "CLEAR_REPORT":
-      await clearReport(await currentTargetPort());
+    case "CLEAR_REPORT": {
+      const port = await currentTargetPort();
+      await clearReport(port);
+      emitReportCountChanged(port, 0);  // site 3: helper guard drops null (non-target clear)
       return { ok: true };
+    }
     default:
       return { error: "unknown message" };
   }
@@ -225,6 +294,7 @@ async function addScreenshot() {
     model: resp.model ?? null,   // lossless editor model — local store only, NOT in saveReport() whitelist
   });
   await setReport(port, r);
+  emitReportCountChanged(port, r.screenshots.length);  // site 1: count rose by 1
   return { ok: true, count: r.screenshots.length };
 }
 
@@ -256,7 +326,152 @@ async function saveReport() {
   }, 20000);
   if (res.json && res.json.ok) {
     await clearReport(browserPort);
+    emitReportCountChanged(browserPort, 0);  // site 2: count reset to 0 on successful save
     return res.json;
   }
   return { error: (res.json && res.json.error) || res.text || `save failed (HTTP ${res.status})` };
 }
+
+// =============================================================================
+// w1-dynamic-icon-badge — per-tab icon state machine
+// =============================================================================
+
+// --- fe-001: per-tabId icon-state render primitives --------------------------
+
+// State color tokens — green anchored to the existing badge token (#1E8E3E / AC13);
+// orange/gray selected per design.md (CLAR-001).
+const ICON_COLORS = {
+  gray:   "#5F6368",   // not-a-target / inactive
+  green:  "#1E8E3E",   // registered target (existing badge token — AC13 anchor)
+  orange: "#E37400",   // in-progress report (also the orange badge background)
+};
+
+// Tints the packaged logo to a flat silhouette in the state color, at all 3 sizes.
+// Returns { 16: ImageData, 48: ImageData, 128: ImageData } for chrome.action.setIcon.
+// OffscreenCanvas is a service-worker global; chrome.runtime.getURL on own packaged
+// assets is same-origin — both need no new permission (AC13, INFO-1 security positive).
+async function iconImageDataForState(state) {
+  const color = ICON_COLORS[state];
+  const sizes = [16, 48, 128];
+  const entries = await Promise.all(sizes.map(async (s) => {
+    const url = chrome.runtime.getURL("icons/icon-" + s + ".png");
+    const resp = await fetch(url);
+    const blob = await resp.blob();
+    const bitmap = await createImageBitmap(blob);
+    const canvas = new OffscreenCanvas(s, s);
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(bitmap, 0, 0, s, s);
+    ctx.globalCompositeOperation = "source-in";
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, s, s);
+    return [s, ctx.getImageData(0, 0, s, s)];
+  }));
+  return Object.fromEntries(entries);
+}
+
+// Applies one resolved state to ONE tab via the tabId-scoped action API.
+// Every chrome.action.* call carries { tabId } — no global badge touch (namespace
+// isolation: keeps this feature out of the released global-badge namespace kb owns).
+async function applyIconState(tabId, { state, count = 0 }) {
+  const imageData = await iconImageDataForState(state);
+  await chrome.action.setIcon({ tabId, imageData });
+  if (state === "orange") {
+    chrome.action.setBadgeText({ tabId, text: String(count) });
+    chrome.action.setBadgeBackgroundColor({ tabId, color: ICON_COLORS.orange });
+    chrome.action.setTitle({ tabId, title: "Snapdeck — " + count + " unsaved screenshot(s)" });
+  } else {
+    chrome.action.setBadgeText({ tabId, text: "" });
+    chrome.action.setTitle({
+      tabId,
+      title: state === "gray"
+        ? "Snapdeck — not a Snapdeck target"
+        : "Snapdeck — ready to capture",
+    });
+  }
+}
+
+// --- fe-002: tab-driven icon derivation + two-tier resolve + session cache ---
+
+const RESOLVE_TTL_MS = 30000;  // green/gray resolution cache TTL (self-heals deck up/down)
+
+// Per-port single-flight for the /resolve fan-out (PO-required, Contrarian Finding 1).
+// WITHIN-WAKE coordination only: a transient promise cleared on settle (finally) and
+// lost on SW teardown — NOT durable state (same category as iconImageDataForState memo;
+// does not relocate the durable resolution cache out of storage.session — AC9 intact).
+const _resolveInFlight = new Map();  // port -> Promise<boolean>
+
+// Two-tier resolution with a chrome.storage.session cache keyed by browser port.
+async function resolvePortCached(port) {
+  const key = "resolve:" + port;
+  const hit = (await chrome.storage.session.get(key))[key];
+  if (hit && (Date.now() - hit.ts) < RESOLVE_TTL_MS) return hit.resolved;  // cache hit — NO probe
+  // Single-flight: concurrent derives for the SAME port share ONE findController fan-out.
+  // CRITICAL: no `await` between the .has() check and the .set(), so a later-resuming
+  // caller always observes the in-flight entry (collapses onActivated+onUpdated bursts
+  // to a single probe — AC12).
+  if (_resolveInFlight.has(port)) return _resolveInFlight.get(port);
+  const probe = (async () => {
+    const ctrlPort = await findController(port);         // released seam — the ONLY probe
+    const resolved = ctrlPort != null;
+    await chrome.storage.session.set({ [key]: { resolved, ts: Date.now() } });
+    return resolved;
+  })();
+  _resolveInFlight.set(port, probe);
+  try { return await probe; }
+  finally { _resolveInFlight.delete(port); }   // cleared on settle — post-TTL re-probes fresh
+}
+
+async function invalidateResolveCache(port) {
+  if (port == null) return;
+  await chrome.storage.session.remove("resolve:" + port);
+}
+
+// Re-derive + paint the CURRENT active tab. Reuses currentTargetPort() (the released
+// single source of truth) — never a second/looser localhost predicate (AC10).
+async function refreshActiveTab() {
+  const tab = await activeTab();                  // released helper
+  if (!tab) return;
+  const tabId = tab.id;
+  const port = await currentTargetPort();         // released SSOT (non-localhost/deceptive → null)
+  if (port == null) { await applyIconState(tabId, { state: "gray" }); return; }   // AC1/AC10 — no probe
+  const resolved = await resolvePortCached(port);
+  if (!resolved) { await applyIconState(tabId, { state: "gray" }); return; }      // AC3
+  const r = await getReport(port);                // released read seam (SSOT for count)
+  const count = r.screenshots.length;
+  await applyIconState(tabId, count > 0 ? { state: "orange", count } : { state: "green" }); // AC4/AC2
+}
+
+// Top-level listeners — registered SYNCHRONOUSLY at module scope (AC8).
+// Double `?.` (root-guarded) for frozen-mock tolerance: the released sibling suites
+// define chrome.tabs but omit onActivated/onUpdated — the optional chain no-ops
+// rather than throwing at module load (Contrarian Finding 2, PO fold-in).
+chrome.tabs?.onActivated?.addListener?.(() => { void refreshActiveTab(); });
+chrome.tabs?.onUpdated?.addListener?.((tabId, changeInfo, tab) => {
+  if (!tab || !tab.active) return;                // best-effort: only the active tab
+  if (changeInfo.status === "loading") { void (async () => {
+    await invalidateResolveCache(await currentTargetPort());  // reload re-probes (deck up after the fact)
+  })(); }
+  if (changeInfo.status === "complete" || changeInfo.url) { void refreshActiveTab(); }
+});
+
+// --- fe-003: live-count freshness trigger + cold-start re-derive -------------
+
+// Top-level storage.session.onChanged listener (key-filtered).
+// STRICT key-filter: acts ONLY on `changes.reportCountChanged`; ignores fe-002's
+// own `resolve:<port>` cache writes (same storage.session area) — prevents the
+// cache-write → onChanged → re-derive → cache-write feedback loop (BOSS-flagged).
+// Double `?.` for frozen-mock tolerance: released suites stub NO `storage` at all —
+// the optional chain short-circuits cleanly at module load (gate-2 criterion #1).
+// A SECOND chrome.runtime.onMessage.addListener is FORBIDDEN here — the released
+// suites single-capture the last listener; `storage.session.onChanged` is the
+// harness-safe alternative.
+chrome.storage?.session?.onChanged?.addListener?.((changes) => {
+  if (!changes.reportCountChanged) return;    // key-filter: ignore resolve:* cache writes
+  void refreshActiveTab();                    // re-derive from the GET_STATE/getReport SSOT
+});
+
+// SW cold-start re-derive — MV3 re-evaluates the SW top level on every wake, so this
+// runs on each cold-start. The feature-detect guard makes module load clean under the
+// frozen no-`storage`/no-`setIcon` mocks (condition false → no call → no rejection —
+// gate-2 criterion #1). Self-heals a tick dropped during prior SW teardown.
+if (chrome.storage?.session && chrome.action?.setIcon) void refreshActiveTab();

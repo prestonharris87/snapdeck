@@ -159,3 +159,182 @@ field needs nothing schema-side (no store/index/migration/version bump). See
 N/A — no schema change to migrate forward or reverse. Forward-only/soft-delete
 policy is not engaged because no schema is created, altered, or dropped. The
 client-side IndexedDB value-shape change is owned by the FE/BE stories.
+
+---
+
+## Feature `w1-draggable-toolbar-toggle` — NO data-model changes (sentinel)
+
+**Decision: sentinel.** This feature introduces **zero** server-side DB /
+IndexedDB / index / migration / reference-data changes. See
+`features/w1-draggable-toolbar-toggle/stories/STORY-db-001.md`.
+
+### Rationale
+
+- The feature's only persistence is the **toolbar position**, written to
+  **`chrome.storage.local`** under a dedicated UI-chrome key (e.g.
+  `snapdeckEditorToolbarPos: {left, top}`). `chrome.storage.local` is a
+  browser-local key→value store **owned by the frontend/extension domain** —
+  not the project's (non-existent) server-side DB, and a layer distinct from the
+  IndexedDB `report` store. `extension/content/editor.js` has **zero**
+  `chrome.storage`/`indexedDB` usage today (verified 2026-06-19), so this is
+  net-new browser-local UI-chrome state authored in extension JS by the FE
+  stories.
+- The **visibility toggle persists nothing** — it is pure view state
+  (`annLayer.visible()` + hide selection chrome), never written to any store, and
+  resets to "shown" on each `openEditor()`.
+- **No IndexedDB `report`-store touch** (no new object store, no index, no
+  `indexedDB.open("snapdeck", N)` version bump, no record-shape change) and **no
+  `model`-envelope touch** — both are explicitly out of scope per
+  `features/w1-draggable-toolbar-toggle/scope.md`.
+
+### Ownership boundary
+
+- **Toolbar-position persistence (`chrome.storage.local`)** → owned by
+  `frontend-architect` (FE story set); browser-local UI-chrome, authored in
+  extension JS.
+- **IndexedDB `report` store (`snapdeck`/`kv`)** → unchanged; owned by released
+  `w0-per-target-reports` (FE/extension domain).
+- **Editor `model` envelope** → unchanged; frozen by released
+  `w0-editor-foundation` (`editor-model.js`).
+
+### Cross-domain confirmation
+
+Sentinel status was coordinated with `frontend-architect` before finalizing (the
+unconditional Phase-5 peer-message floor) — confirmed toolbar position lives in
+`chrome.storage.local` (FE-owned) and the feature does not touch the IndexedDB
+`report` store or the `model` envelope. See
+`features/w1-draggable-toolbar-toggle/conversations/`.
+
+### Migration / rollback strategy
+
+N/A — no server-side schema to migrate forward or reverse, and no IndexedDB
+store/version change. `chrome.storage.local` is a non-versioned browser-local
+key→value store written and read entirely by FE/extension code; the
+forward-only/soft-delete policy is not engaged because no schema is created,
+altered, or dropped by this feature.
+
+---
+
+## Feature `w1-text-box-autofit` — NO data-model changes (sentinel)
+
+**Decision: sentinel.** This feature introduces **zero** server-side DB /
+IndexedDB store / index / version / migration / reference-data changes. See
+`features/w1-text-box-autofit/stories/STORY-db-001.md`.
+
+### Rationale
+
+- The feature reworks the editor text tool into a draw-a-box auto-fit/wrap
+  annotation. The `type:"text"` item in the editor's lossless `model`
+  (`{ version: 1, items: [...] }`) gains opaque geometry + fit fields
+  (`width`, `height`, plus any fit metadata the frontend-architect chooses).
+- Those fields are an **additive structured-clone value-shape change** inside the
+  per-screenshot `screenshots[].model` value released by
+  `w0-editor-foundation`. `addScreenshot()` stores `model: resp.model ?? null`
+  **verbatim/opaque** (`extension/background.js:225`) — no enumeration, no
+  per-item whitelist — so the new fields persist with no storage-helper change.
+- Adding fields to a stored *value* does **not** alter the `kv` object-store
+  definition: the `idb()` `kv` store, `indexedDB.open("snapdeck", 1)`, and
+  `createObjectStore("kv")` are untouched — **no `db.version` bump** (stays v1),
+  no new store, no index. (The in-progress report is a single `kv` value read in
+  full, never a queried/filtered collection — no index warranted.)
+- The per-port re-key released by `w0-per-target-reports` (`reportKey(port)` →
+  `report:<port>`) is respected: the whole `screenshots[]` array (incl.
+  `.model`) is carried as-is, so the new fields survive the re-key transparently.
+- The lossy `annotations` projection stays **byte-frozen**
+  `{ id, type:"text", x, y, text }`; the new geometry/fit fields are
+  **model-only** and never reach `saveReport()`'s `/report/save` whitelist
+  (`extension/background.js:248-252`). `projectAnnotations` is not modified.
+- No reference/seed data, no retention rule, no localized strings.
+
+### Ownership boundary
+
+- **Editor `model` text-item fields (`width`/`height`/fit)** → `frontend-architect`
+  (FE story set); opaque additions to the `type:"text"` item, render-boundary
+  sanity in `editor.js`, no per-item validation in the pure `editor-model.js`.
+- **`screenshots[].model` opaque persistence** → `backend-architect`
+  (`background.js`); already stores `model` verbatim — no change (BE sentinel,
+  STORY-be-001).
+- **IndexedDB `report` store (`snapdeck`/`kv`)** → unchanged; owned by released
+  `w0-per-target-reports` (FE/extension domain).
+- **Editor `model` envelope (`{version:1, items:[…]}`)** → unchanged; frozen by
+  released `w0-editor-foundation` (`editor-model.js`).
+
+### Cross-domain confirmation
+
+Sentinel status was coordinated with **both** `backend-architect` and
+`frontend-architect` before finalizing (the unconditional Phase-5 peer-message
+floor — 4 messages exchanged). BE confirmed `background.js` needs zero change
+(`model` stored verbatim at `:225`, `kv`/`indexedDB.open("snapdeck",1)` untouched,
+`/report/save` whitelist at `:248-252` byte-frozen) and is also sentinelling
+(STORY-be-001); FE confirmed the new fields ride entirely inside the existing
+`model` items with no IndexedDB store/version/key change. See
+`features/w1-text-box-autofit/conversations/`.
+
+### Migration / rollback strategy
+
+N/A — no server-side schema to migrate forward or reverse, and no IndexedDB
+store/version change. The forward-only/soft-delete policy is not engaged because
+no schema is created, altered, or dropped by this feature; the client-side
+value-shape change (new opaque fields on the `model` text item) is owned by the
+FE/BE stories.
+
+---
+
+## Feature `w1-dynamic-icon-badge` — NO data-model changes (sentinel)
+
+**Decision: sentinel.** This feature introduces **zero** server-side DB /
+IndexedDB / index / migration / reference-data changes. See
+`features/w1-dynamic-icon-badge/stories/STORY-db-001.md`.
+
+### Rationale
+
+- The feature turns the static toolbar (`action`) icon into a per-`tabId` state
+  machine (gray / green / orange+count). Its orange count is **read** from the
+  released `w0-per-target-reports` in-progress report via the
+  `GET_STATE → { count, note, port }` message path (`background.js:167`) —
+  **consumed READ-ONLY**. Per `features/w1-dynamic-icon-badge/scope.md` § Out of
+  scope, the `report:<port>` keying and `GET_STATE` payload shape are *consumed
+  only, never modified* (AC10/AC11 reinforce the boundary).
+- **No IndexedDB change:** no new object store, no index, no `report` record-shape
+  change, and **no** `indexedDB.open("snapdeck", N)` version bump. The badge is a
+  pure reader of w0's released store.
+- The feature's only **new** persisted state is a **port-resolution cache** in
+  **`chrome.storage.session`** (AC2/AC9) — an MV3-ephemeral-safe, browser-local
+  key→value store owned by the **frontend/extension** domain, distinct from
+  IndexedDB and further still from any (non-existent) server-side DB. It holds no
+  `report:*` data and is authored in extension JS by the FE story set.
+- **No write path** is added: the released `addScreenshot()` / `saveReport()` /
+  `currentTargetPort()` / `getReport()` / `GET_STATE` / `runCaptureCommand()` seams
+  are consumed read-only (AC11). Live count freshness rides a lightweight notify/push
+  message plus a re-read of the existing `GET_STATE` path — no new stored state.
+- **No reference/seed data**, and **no new `manifest.json` permission** (AC13 —
+  `action`/`tabs`/`storage` are already granted).
+
+### Ownership boundary
+
+- **Port-resolution cache (`chrome.storage.session`)** → owned by
+  `frontend-architect` (FE story set); browser-local, MV3-ephemeral-safe
+  UI/extension state authored in extension JS.
+- **IndexedDB `report` store (`snapdeck`/`kv`, `report:<port>` keying)** → unchanged;
+  owned by released `w0-per-target-reports` (FE/extension domain). This feature reads
+  it via `GET_STATE` only.
+- **Released write/read seams** (`addScreenshot`, `saveReport`, `currentTargetPort`,
+  `getReport`, `GET_STATE`, `runCaptureCommand`) → unchanged; consumed read-only.
+
+### Cross-domain confirmation
+
+Sentinel status was coordinated with `frontend-architect` before finalizing (the
+unconditional Phase-5 peer-message floor) — confirmed (1) the badge reads the
+released w0 `report:<port>` IndexedDB store via `GET_STATE` **READ-ONLY** with no
+new store / key / version bump, (2) the port-resolution cache lives in
+`chrome.storage.session` (FE-owned, not a DB), and (3) no `report:<port>` write
+path or reference/seed/retention data is added. See
+`features/w1-dynamic-icon-badge/conversations/`.
+
+### Migration / rollback strategy
+
+N/A — no server-side schema to migrate forward or reverse, and no IndexedDB
+store/version change. The `chrome.storage.session` resolution cache is a
+non-versioned, ephemeral browser-local store written and read entirely by
+FE/extension code; the forward-only/soft-delete policy is not engaged because no
+schema is created, altered, or dropped by this feature.

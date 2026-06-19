@@ -7,7 +7,7 @@ parent_epic: snapdeck-ux-improvements
 parent_feature: w0-editor-foundation
 assignee: devops-engineer
 author_architect: devops-architect
-status: validated
+status: released
 created_at: 2026-06-19T03:30:00Z
 last_run_id: run-20260619-021434-24507
 defects: []
@@ -190,6 +190,7 @@ auto-rejects any unrelated manifest change). No new AC, no STORY-sec.
 JSON validity confirmed (`node -e "JSON.parse(…)"`). Diff: exactly one added array element, no other
 manifest change. Note: `editor-model.js` not yet on disk (fe-005 dependency in flight); Chrome path
 resolution validated once fe-005 lands.
+2026-06-19T15:02:27Z — BOSS: status: 'validated' -> 'released' (Released via Wave-0 PR #1 (merge 5526403))
 
 ## Engineer Notes
 

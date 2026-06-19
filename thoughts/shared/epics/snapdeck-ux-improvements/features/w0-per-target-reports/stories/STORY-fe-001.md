@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: validated
+status: released
 depends_on: []
 diff_estimate: substantive
 files_modified:
@@ -358,6 +358,7 @@ Established by peer rounds during decomposition (2026-06-19); recorded durably h
   and database-architect.
 - 2026-06-18 — implemented by frontend-engineer. Files changed: extension/background.js, extension/background.reports.test.mjs (new), extension/background.shortcuts.test.mjs (updated key refs). node --test: tests 25 | pass 25 | fail 0. Manual verification deferred — service-worker/IDB plumbing, no UI surface; E2E coverage via browser-tester at Phase 5b.
 2026-06-19T04:10:24Z — orchestrator: status: 'in-progress' -> 'validated' (frontend-validator: validated; honesty-check: passed (commit db6f7b7); node --test 25/25)
+2026-06-19T15:02:27Z — BOSS: status: 'validated' -> 'released' (Released via Wave-0 PR #1 (merge 5526403))
 
 ## Revisions
 

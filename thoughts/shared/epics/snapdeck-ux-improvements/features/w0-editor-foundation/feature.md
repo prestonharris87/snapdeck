@@ -3,13 +3,15 @@ type: feature
 slug: w0-editor-foundation
 wave: 0
 parent_epic: snapdeck-ux-improvements
-status: in-progress
+status: released
 created_at: 2026-06-18T00:00:00Z
 last_run_id: run-20260619-041432-92808
 depends_on: []
 frontend_lane: N/A
 skip_ui_designer: true
 visual_references: []
+released_at: 2026-06-19T15:01:25Z
+pr_url: https://github.com/prestonharris87/snapdeck/pull/1
 ---
 
 # Feature: Annotation editor foundation (box model + lossless persistence + shared transformer)
@@ -235,3 +237,4 @@ Domains an architect explicitly decided needed no work for this feature. The sen
 ## History
 
 2026-06-19T04:15:17Z — orchestrator: status: 'planned' -> 'in-progress' (started via /mat_implement_feature (BOSS-mode))
+2026-06-19T15:01:25Z — BOSS: status: 'in-progress' -> 'released' (PR #1) (Wave 0 released via PR #1 (merge 5526403); BOSS-coordinated wave landing; node --test 56/56)

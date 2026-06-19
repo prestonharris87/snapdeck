@@ -40,6 +40,24 @@
 .snapdeck-toolbar button.snapdeck-primary:hover { background: #f0974a; }
 .snapdeck-sep { width: 1px; height: 22px; background: #3a3d4a; margin: 0 2px; }
 
+/* Drag grab handle — CSS-painted grip dots, no emoji / inline-svg (fe-002) */
+.snapdeck-grip {
+  width: 14px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  background-image: radial-gradient(circle, #5a6070 1.5px, transparent 1.5px);
+  background-size: 5px 5px;
+  background-repeat: repeat;
+  background-position: 2px 2px;
+  margin-right: 2px;
+}
+.snapdeck-grip:hover { background-color: #2c2f3a; }
+.snapdeck-grip:active { cursor: grabbing; }
+
 .snapdeck-textedit {
   position: absolute;
   z-index: 2147483647;

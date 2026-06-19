@@ -8,13 +8,13 @@ parent_epic: snapdeck-ux-improvements
 assignee: backend-engineer
 author_architect: backend-architect
 effort: 2
-status: validated
+status: released
 depends_on: []
 greenfield: false
 created_at: 2026-06-19T00:00:00Z
 last_run_id: run-20260619-023636-42973
 visual_references: []
-defects: []
+defects: [snapdeck-ux-improvements/DEF-001]
 ---
 
 # Story: Capture keyboard-shortcut command + onCommand listener + badge signal
@@ -424,6 +424,7 @@ is loaded in Chrome.  The `node --test` suite covers the complete behavioral con
 
 - 2026-06-19 — created by backend-architect (effort=2, depends on none)
 - 2026-06-18 — implemented by backend-engineer. Files: extension/manifest.json (commands block added), extension/background.js (captureInFlight guard + chrome.commands.onCommand.addListener + runCaptureCommand at module scope), extension/background.shortcuts.test.mjs (new, 8 tests). node --test: 8/8 pass. node --check: syntax OK. Manual verification deferred — browser extension command requires Chrome + extension loaded in browser; no HTTP endpoint to hit directly.
+2026-06-19T15:02:27Z — BOSS: status: 'validated' -> 'released' (Released via Wave-0 PR #1 (merge 5526403))
 
 ## Revisions
 

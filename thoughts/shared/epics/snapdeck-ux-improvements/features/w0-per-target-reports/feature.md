@@ -5,10 +5,12 @@ wave: 0
 parent_epic: snapdeck-ux-improvements
 status: in-progress
 created_at: 2026-06-18T00:00:00Z
-last_run_id: run-20260619-034752-73507
+last_run_id: run-20260619-161653-52371
 depends_on: []
 frontend_lane: N/A
 visual_references: []
+released_at: 2026-06-19T15:01:25Z
+pr_url: https://github.com/prestonharris87/snapdeck/pull/1
 ---
 
 # Feature: Per-target in-progress reports
@@ -249,6 +251,11 @@ already does; there are no new transitions or visual state changes to assert.
 - [ ] STORY-db-001 — Sentinel: no server-side DB changes (IndexedDB is client-side) · approved
 - [ ] STORY-do-001 — Sentinel: no devops changes (manifest already grants `storage` + `unlimitedStorage`) · approved
 
+## Stories added (post-release)
+
+- 2026-06-19 — STORY-fe-003: emit chrome.storage.session report-count tick at 3 sites
+  (clarification C1; see decision-memo-v2.md)
+
 ## Defects (populated as found)
 
 - (none yet)
@@ -264,3 +271,5 @@ Domains an architect explicitly decided needed no work for this feature. The sen
 ## History
 
 2026-06-19T03:49:51Z — orchestrator: status: 'planned' -> 'in-progress' (started via /mat_implement_feature (BOSS-mode))
+2026-06-19T15:01:25Z — BOSS: status: 'in-progress' -> 'released' (PR #1) (Wave 0 released via PR #1 (merge 5526403); BOSS-coordinated wave landing; node --test 56/56)
+2026-06-19T16:17:45Z — orchestrator: status: 'released' -> 'in-progress' [REOPENED for STORY-fe-003] (re-opened to ship STORY-fe-003 (storage.session emission) via /mat_implement_feature [BOSS-mode])

@@ -3,13 +3,15 @@ type: feature
 slug: w1-draggable-toolbar-toggle
 wave: 1
 parent_epic: snapdeck-ux-improvements
-status: in-progress
+status: released
 created_at: 2026-06-18T00:00:00Z
 last_run_id: run-20260619-161353-46977
 depends_on: [w0-editor-foundation]
 frontend_lane: N/A
 skip_ui_designer: true
 visual_references: []
+released_at: 2026-06-19T22:19:58Z
+pr_url: https://github.com/prestonharris87/snapdeck/pull/2
 ---
 
 # Feature: Draggable toolbar + annotation visibility toggle
@@ -300,3 +302,4 @@ Domains an architect explicitly decided needed no work for this feature. The sen
 ## History
 
 2026-06-19T16:14:57Z — orchestrator: status: 'planned' -> 'in-progress' (started via /mat_implement_feature (BOSS-mode, first on editor.js track))
+2026-06-19T22:19:58Z — BOSS: status: 'in-progress' -> 'released' (PR #2) (Wave 1 released via PR #2 (merge 8c340a6); node --test 121/121)

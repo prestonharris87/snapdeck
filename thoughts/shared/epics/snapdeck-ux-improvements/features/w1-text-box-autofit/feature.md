@@ -3,13 +3,15 @@ type: feature
 slug: w1-text-box-autofit
 wave: 1
 parent_epic: snapdeck-ux-improvements
-status: in-progress
+status: released
 created_at: 2026-06-18T00:00:00Z
 last_run_id: run-20260619-170919-3029
 depends_on: [w0-editor-foundation]
 frontend_lane: N/A
 skip_ui_designer: true
 visual_references: []
+released_at: 2026-06-19T22:19:58Z
+pr_url: https://github.com/prestonharris87/snapdeck/pull/2
 ---
 
 # Feature: Text-box auto-fit rework (Google-Slides style)
@@ -319,3 +321,4 @@ Domains an architect explicitly decided needed no work for this feature. The sen
 
 - 2026-06-19T18:48:55Z — team-lead — FROZEN / FEATURE_READY (BOSS-mode): all 3 FE stories validated; gates green (node --test 95/95, Playwright 5/5 + C/D); 5b screenshots 4/4; DEFECT-001 resolved (dblclick re-edit + accurate bounded auto-fit, r2). Awaiting BOSS wave-PR + release stamp.
 2026-06-19T17:10:13Z — orchestrator: status: 'planned' -> 'in-progress' (started via /mat_implement_feature (BOSS-mode))
+2026-06-19T22:19:58Z — BOSS: status: 'in-progress' -> 'released' (PR #2) (Wave 1 released via PR #2 (merge 8c340a6); node --test 121/121)

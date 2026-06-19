@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: validated
+status: released
 depends_on: [STORY-fe-001, STORY-fe-002]
 created_at: 2026-06-19T15:30:00Z
 last_run_id: run-20260619-150554-36418
@@ -226,6 +226,7 @@ feature level. No cross-domain dependency; see feature.md §No-work domains.)
 - 2026-06-19 — created by frontend-architect (effort=2, depends on STORY-fe-001, STORY-fe-002)
 - 2026-06-19T00:00:00Z — implemented (commit: 3cab947)
 - 2026-06-19T20:10:00Z — DEFECT-001 fix applied (commit: 6a03abb) — dblclick Option A + bounded fit loop; bt re-smoke 7/7 scenario 4 pass
+2026-06-19T22:19:59Z — BOSS: status: 'validated' -> 'released' (Released via Wave-1 PR #2 (8c340a6))
 
 ## Engineer Notes
 

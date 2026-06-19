@@ -210,3 +210,11 @@ feature's scope and introduce no new animation.
 ## Defects (populated as found)
 
 - (none yet)
+
+## No-work domains
+
+Domains an architect explicitly decided needed no work for this feature. The sentinel stories that recorded these decisions were pruned at the end of `/mat_write_feature`; the rationale is preserved here.
+
+- **frontend** — **No frontend changes required for this feature.**
+- **database** — **No database changes required for this feature.**
+- **devops** — >-

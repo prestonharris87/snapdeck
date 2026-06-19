@@ -111,6 +111,15 @@ the w1 siblings is needed (their regions are orthogonal: `w1-draggable-toolbar-t
    explicitly whether the per-tab model absorbs or cleanly layers over the existing
    flash logic, with no stuck transient badge and no fight over the badge. **Flag for
    Contrarian 5.5 review.**
+   **BOSS ruling (released-work boundary, 2026-06-19):** `runCaptureCommand()` is
+   `w0-keyboard-shortcuts`' **RELEASED** code — it is **READ-ONLY** for this feature.
+   Reconcile entirely on our side: the per-`tabId` state machine re-asserts the correct
+   steady state *after* kb's transient flash, using only the per-`tabId` `action` calls
+   this feature owns. Do **NOT** edit kb's `runCaptureCommand()` lines. If planning or
+   the Contrarian pass concludes the reconcile is genuinely impossible without changing
+   kb's badge behavior, that is a **defect in released work** — surface it to BOSS (who
+   re-engages the kb team via the defect flow); do NOT modify kb's code unilaterally.
+   The E2E spec MUST assert **steady-state-after-flash** explicitly.
 5. **Cheap tab switching.** Gray is instant for non-localhost (no probe). The
    `findController()` `/resolve` fan-out (`CONTROLLER_TRIES` fetches) runs ONLY on a
    `storage.session` cache miss for a localhost tab. Never block a tab switch on a

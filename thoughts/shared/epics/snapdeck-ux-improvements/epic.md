@@ -145,30 +145,37 @@ suggested clusters (shell vs. editor) are seeds, not commitments.
 ## Features (wave-grouped)
 
 <!--
-Populated by the product-owner during /mat_write_epic Phase 4 (decompose-into-features mode).
-
 Layout contract:
 - Group features by integer wave (w0, w1, w2, …). Same-wave features are parallel-safe.
 - Higher waves depend on ALL lower waves being fully released first.
 - Every feature link points to its stub feature.md under `features/<wX-slug>/feature.md`.
-- For each feature, surface its `depends_on:` siblings inline (helps the user see the DAG without opening every feature.md).
-
-Do NOT populate stories, mockups, or scope.md here — those are downstream skills.
+- For each feature, surface its `depends_on:` siblings inline.
 This section IS the gate-1 backlog view.
 -->
 
+8 features across 3 waves. The two foundational changes — the port-keyed report
+store and the editor-foundation refactor — sit in Wave 0; every later feature
+hangs off one or both. The three annotation-shape rewrites of
+`extension/content/editor.js` (editor-foundation → text-box-autofit →
+rectangle-tool) are deliberately spread one-per-wave so two features never
+rewrite the same region of `editor.js` in parallel.
+
 ### Wave 0 (parallel-safe; no prerequisites)
 
-- [ ] [w0-<feature-slug-1>](features/w0-<feature-slug-1>/feature.md) — <one-line summary>
-- [ ] [w0-<feature-slug-2>](features/w0-<feature-slug-2>/feature.md) — <one-line summary>
+- [ ] [w0-per-target-reports](features/w0-per-target-reports/feature.md) — Re-key the in-progress report store from one global record to a map keyed by worktree/browser-port (background.js + popup). Foundational. · depends_on: []
+- [ ] [w0-editor-foundation](features/w0-editor-foundation/feature.md) — Box model + lossless editor-`model` persistence + a shared Konva.Transformer move/resize for box-shaped annotations (editor.js). Foundational. · depends_on: []
+- [ ] [w0-keyboard-shortcuts](features/w0-keyboard-shortcuts/feature.md) — `commands` API: capture bound to `Cmd/Ctrl+Shift+S`, dispatched to the existing `addScreenshot` seam. Independent, low-risk. · depends_on: []
 
 ### Wave 1 (depends on Wave 0)
 
-- [ ] [w1-<feature-slug-3>](features/w1-<feature-slug-3>/feature.md) — <one-line summary> · depends_on: [w0-<feature-slug-1>]
+- [ ] [w1-dynamic-icon-badge](features/w1-dynamic-icon-badge/feature.md) — Per-tab gray/green/orange+count icon state machine; green via cached `/resolve` probe, orange-count from the per-target report. · depends_on: [w0-per-target-reports]
+- [ ] [w1-text-box-autofit](features/w1-text-box-autofit/feature.md) — Draw-a-box text tool: wrap + capped font auto-fit, white fill / red outline / black text, editable + resizable in select mode. First annotation-shape rewrite. · depends_on: [w0-editor-foundation]
+- [ ] [w1-draggable-toolbar-toggle](features/w1-draggable-toolbar-toggle/feature.md) — Grab-handle DOM-drag for the editor toolbar (position remembered) + a non-destructive annotation-layer visibility toggle. Toolbar/layer region, parallel-safe with text-box. · depends_on: [w0-editor-foundation]
 
 ### Wave 2 (depends on Wave 1)
 
-<!-- add more wave sections (Wave 3, Wave 4, …) as the PO assigns them. -->
+- [ ] [w2-rectangle-tool](features/w2-rectangle-tool/feature.md) — Red-outline rectangle drawn by drag, moved/resized via the shared transformer. Sequenced after text-box (same editor.js annotation region). · depends_on: [w0-editor-foundation, w1-text-box-autofit]
+- [ ] [w2-screenshot-gallery](features/w2-screenshot-gallery/feature.md) — Popup thumbnails of the current target's report; click to re-open on the stored PNG (lossless re-edit), Done replaces, Delete is destructive + confirmed. · depends_on: [w0-per-target-reports, w0-editor-foundation]
 
 ## Open questions
 

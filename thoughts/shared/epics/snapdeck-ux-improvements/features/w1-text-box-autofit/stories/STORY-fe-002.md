@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 3
-status: in-progress
+status: validated
 depends_on: [STORY-fe-001]
 created_at: 2026-06-19T15:30:00Z
 last_run_id: run-20260619-150554-36418
@@ -241,6 +241,8 @@ animations/transitions, so there is no reduced-motion-affected motion. Consisten
 
 ## History
 
+
+- 2026-06-19T17:24:51Z — orchestrator — validate validated; honesty passed (BOSS-mode implement)
 - 2026-06-19 — created by frontend-architect (effort=3, depends on STORY-fe-001)
 - 2026-06-19T00:00:00Z — implemented (commit: 3cab947)
 
@@ -435,3 +437,8 @@ a `Konva.Group(Rect+Text)` on canvas with length-capped `safeText`, no HTML sink
 `fontFamily` is a render-only constant (not stored → model-byte round-trip unaffected). **Standing
 guardrail:** keep `renderText` on `Konva.Text` + the `renderBox`-mirrored geometry guard; never route box
 text/labels through a raw-HTML or `style`-string path. Non-gating.
+
+## Validation
+
+- 2026-06-19T17:24:51Z — result: **validated** (honesty: passed)
+- frontend-validator: all 9 ACs met — Konva.Group white/red/black, bounded auto-fit (recompute-on-render), inset clamp + clamped-inset short-circuit closing the 12-18px slow band [security PROMOTE], render guard, pinned fontFamily, tight draggable gate. projectAnnotations untouched.

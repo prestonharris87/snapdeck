@@ -129,3 +129,11 @@ no new manifest permission**. The `ANNOTATE` channel is same-extension `chrome.r
 (`background.js:209`) with **no `externally_connectable`** in the manifest, so it is not web-reachable.
 This sentinel introduces no new trust assumption. (No HTTP endpoint, no server entity table, not
 multi-tenant → authn/authz/CSRF/CORS/rate-limit/audit-column checklist items are N/A by construction.)
+
+**PO disposition (persistence/auth boundary unchanged):** ACCEPT_AS_RECOMMENDATION — confirmed; `model`
+stored verbatim/opaque (`background.js:225`), excluded from the upstream `/report/save` whitelist
+(`background.js:248-252`), host guard + loopback controller untouched, no `externally_connectable`. The
+sentinel's empty-diff is the right disposition; the `## How we validate` checklist (empty-diff /
+byte-identical-upstream / no-new-IPC) gives the backend-validator the checkable assertions. **Standing
+guardrail:** keep `model` out of the `/report/save` whitelist and never add `externally_connectable` —
+the new opaque text-item fields must never become web-reachable or leak upstream. Non-gating.

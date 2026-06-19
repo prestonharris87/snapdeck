@@ -317,3 +317,15 @@ edited via `textarea.value` is N/A for DOM-XSS — do not manufacture an XSS fin
 - **Permissions/secrets:** no manifest/permission/host/network change; no secrets in scope (confirmed
   against `manifest.json` + the be/db/do sentinels). `projectAnnotations` byte-frozen (no width/height
   leak; `editor-model.js:54-58`).
+
+**PO disposition (Finding 1 — no DOM-injection):** ACCEPT_AS_RECOMMENDATION — confirmed correct; the
+edit path (`textarea.value`, `editor.js:195`) and render path (`Konva.Text` canvas glyphs) are both
+non-HTML sinks, and the new `width`/`height` are numeric. **Standing guardrail (record for all editor
+work, incl. w2-rectangle / w2-screenshot-gallery):** never introduce a raw-HTML path (`innerHTML`/
+`insertAdjacentHTML`/`outerHTML`) for the textarea, a future text label, or geometry — keep authoring on
+`textarea.value` and rendering on `Konva.Text`/numeric node attributes. Non-gating; no AC change.
+
+**PO disposition (STRIDE checklist):** ACCEPT_AS_RECOMMENDATION — record-only; every axis (Spoofing/EoP
+isolated-world + no `externally_connectable`; Tampering = extension-owned `model`, opaque-by-design
+envelope; Repudiation N/A; DoS handled in fe-002; Permissions unchanged) was applied and grounded, no
+finding. No action.

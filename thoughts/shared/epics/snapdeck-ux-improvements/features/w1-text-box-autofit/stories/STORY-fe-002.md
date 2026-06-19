@@ -69,12 +69,17 @@ handlers. **Select/move/resize via the shared transformer + re-fit on resize is 
   unspecified and can degrade to one-glyph-per-line on the length-capped text — the one fit path not
   provably cheap. So **both**: (1) **clamp** `innerW = Math.max(1, item.width - 2*PAD)` and
   `innerH = Math.max(1, item.height - 2*PAD)` so the fit never sees a non-positive inset; **and** (2)
-  **short-circuit** — when `item.width < 2*PAD || item.height < 2*PAD`, skip the measurement loop
-  entirely and use `TEXT_AUTOFIT_MIN`, relying on the Group `clip` to contain the glyphs. Together these
-  make auto-fit **bounded and cheap even on a thin finite box** (closes the "auto-fit must not throw or
-  hang" contract that `w2-screenshot-gallery` relies on when re-opening arbitrary stored models). The
-  render-time geometry guard (`if (item.width<=0||item.height<=0) return`) does **not** catch `width=8`
-  (it is `>0`), so this clamp is the load-bearing protection, not the guard.
+  **short-circuit on the CLAMPED inset** — when `innerW < TEXT_AUTOFIT_MIN || innerH < TEXT_AUTOFIT_MIN`
+  (i.e. the inset is below a usable-wrap width — this **supersedes** and subsumes the raw `dim < 2*PAD`
+  test), skip the measurement loop entirely and use `TEXT_AUTOFIT_MIN`, relying on the Group `clip` to
+  contain the glyphs. Keying the short-circuit on the **clamped inset** (not only the raw dimension)
+  closes the residual ~12–18px raw-width band where the raw-dim test passes but `innerW` still floors near
+  1px and a space-heavy ≤10 000-char text would wrap to thousands of lines per measurement (security LOW
+  PROMOTE — bounded-but-worst-case-slow on a crafted re-opened model). Together these make auto-fit
+  **bounded and cheap even on a thin finite box** (closes the "auto-fit must not throw or hang" contract
+  that `w2-screenshot-gallery` relies on when re-opening arbitrary stored models). The render-time
+  geometry guard (`if (item.width<=0||item.height<=0) return`) does **not** catch `width=8` (it is `>0`),
+  so this clamp + clamped-inset short-circuit is the load-bearing protection, not the guard.
 - **Auto-fit (new helper `fitTextFontSize(textNode, innerW, innerH, cap, min)`):** return the
   **largest integer font size in `[min, cap]`** such that the text — laid out at `width=innerW` (the
   **clamped** inset), `wrap:"word"` — has **wrapped height ≤ innerH**. Implementation is engineer
@@ -176,6 +181,11 @@ handlers. **Select/move/resize via the shared transformer + re-fit on resize is 
       8×200) renders **without throwing, hanging, or emitting a console error** — `innerW`/`innerH` are
       clamped to `≥1` and the degenerate case short-circuits to `TEXT_AUTOFIT_MIN` + Group `clip` rather
       than feeding a non-positive width into the fit loop.
+- [ ] **Clamped-inset short-circuit covers the residual band (security LOW PROMOTE):** a text box in the
+      `~12–18px` raw-width band (clamped `innerW < TEXT_AUTOFIT_MIN`, e.g. `width:15`) **short-circuits to
+      `TEXT_AUTOFIT_MIN` + Group `clip` and does NOT run the measurement loop** — structurally asserted via
+      the rendered font being `TEXT_AUTOFIT_MIN` (so the worst-case-slow band on a crafted re-opened model
+      is closed, not merely bounded). The short-circuit keys on the clamped inset, not only `dim < 2*PAD`.
 - [ ] **Font pinned + round-trip contract is model-byte (not pixel) identity:** the `Konva.Text` carries
       an explicit web-safe `fontFamily` (not Konva's default); the documented round-trip guarantee is
       `deepEquals(model.items)` (model-byte identity), with cross-font-environment pixel/line identity
@@ -214,6 +224,11 @@ animations/transitions, so there is no reduced-motion-affected motion. Consisten
   completes promptly (no hang), no thrown exception, no console error; the box clips to its bounds at
   `TEXT_AUTOFIT_MIN` (the negative-inset path is closed by the clamp + short-circuit). _[Concern 1 — the
   finite small box the `NaN`/`Infinity`/`"200"` hostile-item case does NOT exercise.]_
+- `residual-band box short-circuits to MIN (security LOW PROMOTE)` — ANNOTATE a `width:15` box (clamped
+  `innerW < TEXT_AUTOFIT_MIN`) with a large space-heavy string → the rendered text font is exactly
+  `TEXT_AUTOFIT_MIN` (the measurement loop was skipped via the clamped-inset short-circuit), `render()`
+  completes promptly, no console error. _[Closes the ~12–18px worst-case-slow band on a crafted re-opened
+  model; structural font-value assertion, not a flaky timing assertion.]_
 
 ## Dependencies
 
@@ -370,3 +385,23 @@ string. A hostile `text` field is rendered as literal canvas glyphs.
 **Recommendation:** none (record-only). Keep the render on `Konva.Text` and the geometry guard mirroring
 `renderBox` (`editor.js:171-173`); the explicit `fontFamily` constant is a render-only value (not stored
 on the model item), so it does not affect the model-byte round-trip or add an injection surface.
+
+**PO disposition (Finding 1 — LOW, residual worst-case-slow band):** PROMOTE_TO_AC — fold the
+clamped-inset short-circuit tweak into fe-002 now, do NOT defer. Rationale: the fix is a single
+comparison inside fe-002's *already-existing* short-circuit (extend it to fire when the **clamped**
+`innerW`/`innerH` hits its `1` floor, not only when the raw `dim < 2*PAD`), so it is free and lives
+exactly where the code is — while a known dependent, **w2-screenshot-gallery**, drives *arbitrary stored
+models* through this exact fit boundary, so the residual ~12–18px slow band is on a path that consumer
+weaponizes. Deferring is strictly worse: w2 doesn't own the fit helper, so it would have to cross-edit
+released fe-002 or file a defect back. (Same precedent as w0-editor-foundation fe-004: promote when the
+guard is free + in-scope + a dependent exercises the path.) The contract was already MET; this trims the
+worst-case latency. **The w2 forward-flag still stands** — w2's STRIDE must re-confirm bounded re-open
+with the inherited `RENDER_TEXT_CAP`/`RENDER_ITEM_CAP` + this clamp/short-circuit as the protection.
+Wiring: AC checkbox + extended thin-box E2E added below; render-guard test stays in the browser-tester
+lane (Konva-dependent), not `node --test`.
+
+**PO disposition (Finding 2 — no DOM-XSS):** ACCEPT_AS_RECOMMENDATION — confirmed; `renderText` composes
+a `Konva.Group(Rect+Text)` on canvas with length-capped `safeText`, no HTML sink, and the pinned
+`fontFamily` is a render-only constant (not stored → model-byte round-trip unaffected). **Standing
+guardrail:** keep `renderText` on `Konva.Text` + the `renderBox`-mirrored geometry guard; never route box
+text/labels through a raw-HTML or `style`-string path. Non-gating.

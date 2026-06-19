@@ -340,3 +340,11 @@ extension's own isolated-world `model`, not page- or network-controlled.
 write-back staying **numeric** (`editor.js:64-65,69`) is precisely what keeps this resize/move surface free
 of a style/markup-injection vector. The lossless round-trip this story verifies rides the same opaque
 extension-owned `model` path — no new trust boundary.
+
+**PO disposition (Finding — frozen transformer, no new security surface):** ACCEPT_AS_RECOMMENDATION —
+confirmed; reusing the frozen `attachBoxTransformer` with numeric-only geometry write-back adds no
+persistence/IPC/network/permission surface, and the unselected-drag move-loss (resolved in Phase 6 via
+the tight `draggable` gate) is a data-integrity/UX matter, not an attacker-facing one. **Standing
+guardrail (carries to w2-rectangle-tool):** the shared select/move/resize contract must keep
+`attachBoxTransformer` frozen and the write-back numeric — no forked transformer, no style/markup path.
+Non-gating; no AC change.

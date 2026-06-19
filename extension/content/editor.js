@@ -13,7 +13,7 @@
     if (msg && msg.type === "PING") { sendResponse({ ok: true }); return; }
     if (msg && msg.type === "ANNOTATE") {
       if (active) { sendResponse({ cancelled: true, busy: true }); return; }
-      openEditor(msg.image).then(sendResponse);
+      openEditor(msg.image, msg.model).then(sendResponse);
       return true; // async response
     }
   });
@@ -21,7 +21,7 @@
   function uid() { return "a" + Math.random().toString(36).slice(2, 9); }
   function clone(o) { return JSON.parse(JSON.stringify(o)); }
 
-  function openEditor(imageDataUrl) {
+  function openEditor(imageDataUrl, initialModel) {
     return new Promise(function (resolve) {
       active = true;
       var dpr = window.devicePixelRatio || 1;
@@ -44,8 +44,30 @@
       var stage = new Konva.Stage({ container: stageDiv, width: W, height: H });
       var bgLayer = new Konva.Layer({ listening: false });
       var annLayer = new Konva.Layer();
+      var selectLayer = new Konva.Layer(); // transformer lives here; survives annLayer.destroyChildren()
       var cursorLayer = new Konva.Layer({ listening: false });
-      stage.add(bgLayer); stage.add(annLayer); stage.add(cursorLayer);
+      stage.add(bgLayer); stage.add(annLayer); stage.add(selectLayer); stage.add(cursorLayer);
+
+      // --- shared Konva.Transformer (one per session; reused by all box subtypes — contract surface #3) ---
+      var transformer = new Konva.Transformer({ rotateEnabled: false });
+      selectLayer.add(transformer);
+
+      // Internal helper: w1 text-box and w2 rectangle call this instead of rolling their own transformer.
+      // Signature + behavior are frozen — do not rename/reshape without a contract bump.
+      function attachBoxTransformer(node, item) {
+        transformer.nodes([node]);
+        node.draggable(true);
+        // Konva applies scaleX/scaleY during resize — bake back into width/height on commit
+        node.on("transformend", function () {
+          item.x      = node.x();
+          item.y      = node.y();
+          item.width  = Math.max(1, node.width()  * node.scaleX());
+          item.height = Math.max(1, node.height() * node.scaleY());
+          node.scaleX(1); node.scaleY(1);
+          snapshot(); render();
+        });
+        node.on("dragend", function () { item.x = node.x(); item.y = node.y(); snapshot(); });
+      }
 
       // background screenshot
       var imgEl = new Image();
@@ -60,7 +82,8 @@
       drawCursor(Konva, cursorLayer, lm.x, lm.y);
 
       // --- editor state ---
-      var model = [];           // [{id,type:'arrow',x1,y1,x2,y2} | {id,type:'text',x,y,text}]
+      // deserializeModel returns [] for absent/invalid payloads — safe no-op for normal capture flow
+      var model = window.__snapdeckEditorModel.deserializeModel(initialModel); // [{id,type:'arrow'|'box'|'text',...}]
       var tool = "arrow";
       var selectedId = null;
       var past = [], future = [];
@@ -73,14 +96,27 @@
       // --- rendering from model ---
       function render() {
         annLayer.destroyChildren();
-        model.forEach(function (item) {
+        // Item-count cap: bound render to RENDER_ITEM_CAP to prevent DoS on oversized models
+        var renderItems = model.length > RENDER_ITEM_CAP ? model.slice(0, RENDER_ITEM_CAP) : model;
+        renderItems.forEach(function (item) {
           if (item.type === "arrow") renderArrow(item);
+          else if (item.type === "box") renderBox(item);
           else if (item.type === "text") renderText(item);
         });
+        // Detach transformer when no box is selected in select mode
+        if (!(selectedId && tool === "select")) { transformer.nodes([]); }
         annLayer.draw();
+        selectLayer.batchDraw();
       }
 
+      // --- render-boundary constants and helper (fe-004: guard against oversized/malformed models) ---
+      var RENDER_ITEM_CAP = 500;    // max items rendered per call
+      var RENDER_TEXT_CAP = 10000;  // max chars displayed per text item
+      function isFiniteNum(v) { return typeof v === "number" && isFinite(v); }
+
       function renderArrow(item) {
+        // Render-boundary guard: skip items with non-finite geometry (fe-004 malformed-item tolerance)
+        if (!isFiniteNum(item.x1) || !isFiniteNum(item.y1) || !isFiniteNum(item.x2) || !isFiniteNum(item.y2)) return;
         var arrow = new Konva.Arrow({
           points: [item.x1, item.y1, item.x2, item.y2],
           stroke: "#e53935", fill: "#e53935", strokeWidth: 3,
@@ -109,8 +145,11 @@
       }
 
       function renderText(item) {
+        // Render-boundary guard: skip non-finite position; cap text length (fe-004)
+        if (!isFiniteNum(item.x) || !isFiniteNum(item.y)) return;
+        var safeText = (typeof item.text === "string" ? item.text : " ").slice(0, RENDER_TEXT_CAP) || " ";
         var text = new Konva.Text({
-          x: item.x, y: item.y, text: item.text || " ", fontSize: 18,
+          x: item.x, y: item.y, text: safeText, fontSize: 18,
           fontStyle: "bold", fill: "#e53935", draggable: tool === "select",
           padding: 4,
         });
@@ -124,6 +163,28 @@
             x: box.x - 2, y: box.y - 2, width: box.width + 4, height: box.height + 4,
             stroke: "#1e88e5", strokeWidth: 1, dash: [4, 4], listening: false,
           }));
+        }
+      }
+
+      // renderBox: box primitive (fe-001); transformer attach in select mode (fe-002); geometry guard (fe-004)
+      function renderBox(item) {
+        // Render-boundary guard: skip items with non-finite or wrong-type geometry (fe-004)
+        if (!isFiniteNum(item.x) || !isFiniteNum(item.y) || !isFiniteNum(item.width) || !isFiniteNum(item.height)) return;
+        if (item.width <= 0 || item.height <= 0) return;
+        var rect = new Konva.Rect({
+          x: item.x, y: item.y, width: item.width, height: item.height,
+          stroke: "#1e88e5", strokeWidth: 2,
+          fill: "rgba(0,0,0,0.001)", // near-transparent fill makes interior hittable for click-select
+          draggable: tool === "select",
+        });
+        rect.on("click tap", function (e) {
+          e.cancelBubble = true;
+          if (tool === "select") { selectedId = item.id; render(); }
+        });
+        annLayer.add(rect);
+        if (selectedId === item.id && tool === "select") {
+          attachBoxTransformer(rect, item);
+          selectLayer.batchDraw();
         }
       }
 
@@ -154,9 +215,13 @@
       // --- drawing interactions ---
       var drawing = null;
       stage.on("mousedown touchstart", function (e) {
-        if (tool === "arrow" && e.target === stage || (tool === "arrow" && e.target.getLayer() === bgLayer)) {
+        if (tool === "arrow" && (e.target === stage || e.target.getLayer() === bgLayer)) {
           var p = stage.getPointerPosition();
           drawing = { id: uid(), type: "arrow", x1: p.x, y1: p.y, x2: p.x, y2: p.y };
+        } else if (tool === "box" && (e.target === stage || e.target.getLayer() === bgLayer)) {
+          var p = stage.getPointerPosition();
+          // _x0/_y0: drag origin for top-left normalization (fe-001)
+          drawing = { id: uid(), type: "box", _x0: p.x, _y0: p.y, x: p.x, y: p.y, width: 0, height: 0 };
         } else if (tool === "select" && (e.target === stage || e.target.getLayer() === bgLayer)) {
           selectedId = null; render();
         }
@@ -164,16 +229,33 @@
       stage.on("mousemove touchmove", function () {
         if (!drawing) return;
         var p = stage.getPointerPosition();
-        drawing.x2 = p.x; drawing.y2 = p.y;
-        var tmp = annLayer.findOne(".__drawing");
-        if (tmp) tmp.points([drawing.x1, drawing.y1, drawing.x2, drawing.y2]);
-        else { var a = new Konva.Arrow({ name: "__drawing", points: [drawing.x1, drawing.y1, drawing.x2, drawing.y2], stroke: "#e53935", fill: "#e53935", strokeWidth: 3, pointerLength: 12, pointerWidth: 12 }); annLayer.add(a); }
+        if (drawing.type === "arrow") {
+          drawing.x2 = p.x; drawing.y2 = p.y;
+          var tmp = annLayer.findOne(".__drawing");
+          if (tmp) tmp.points([drawing.x1, drawing.y1, drawing.x2, drawing.y2]);
+          else { var a = new Konva.Arrow({ name: "__drawing", points: [drawing.x1, drawing.y1, drawing.x2, drawing.y2], stroke: "#e53935", fill: "#e53935", strokeWidth: 3, pointerLength: 12, pointerWidth: 12 }); annLayer.add(a); }
+        } else if (drawing.type === "box") {
+          // Normalize to top-left origin on every move (fe-001)
+          drawing.x = Math.min(drawing._x0, p.x); drawing.y = Math.min(drawing._y0, p.y);
+          drawing.width = Math.abs(p.x - drawing._x0); drawing.height = Math.abs(p.y - drawing._y0);
+          var tmp = annLayer.findOne(".__boxdrawing");
+          if (tmp) { tmp.x(drawing.x); tmp.y(drawing.y); tmp.width(drawing.width); tmp.height(drawing.height); }
+          else { annLayer.add(new Konva.Rect({ name: "__boxdrawing", x: drawing.x, y: drawing.y, width: drawing.width, height: drawing.height, stroke: "#1e88e5", strokeWidth: 2, fill: "rgba(0,0,0,0.001)", dash: [4, 4] })); }
+        }
         annLayer.batchDraw();
       });
       stage.on("mouseup touchend", function () {
         if (!drawing) return;
-        var dx = drawing.x2 - drawing.x1, dy = drawing.y2 - drawing.y1;
-        if (Math.hypot(dx, dy) > 8) { model.push(drawing); snapshot(); }
+        if (drawing.type === "arrow") {
+          var dx = drawing.x2 - drawing.x1, dy = drawing.y2 - drawing.y1;
+          if (Math.hypot(dx, dy) > 8) { model.push(drawing); snapshot(); }
+        } else if (drawing.type === "box") {
+          // Sub-threshold reject: mirrors arrow's >8 guard; require >4 in each dimension (fe-001)
+          if (drawing.width > 4 && drawing.height > 4) {
+            model.push({ id: drawing.id, type: "box", x: drawing.x, y: drawing.y, width: drawing.width, height: drawing.height });
+            snapshot();
+          }
+        }
         drawing = null; render();
       });
       stage.on("click tap", function (e) {
@@ -194,7 +276,7 @@
           selectedId = null; snapshot(); render(); e.preventDefault();
         } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !e.shiftKey) { undo(); e.preventDefault(); }
         else if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))) { redo(); e.preventDefault(); }
-        else if (e.key === "Escape") { finish(true); }
+        else if (e.key === "Escape") { if (selectedId) { selectedId = null; render(); } else { finish(true); } }
       }
 
       // --- toolbar wiring ---
@@ -217,16 +299,17 @@
         }
         selectedId = null; render();
         var annotated = stage.toDataURL({ pixelRatio: dpr });
-        var annotations = model.map(function (m) {
-          if (m.type === "arrow") return { id: m.id, type: "arrow", from: [Math.round(m.x1), Math.round(m.y1)], to: [Math.round(m.x2), Math.round(m.y2)] };
-          return { id: m.id, type: "text", x: Math.round(m.x), y: Math.round(m.y), text: m.text };
-        });
+        // Use the pure module (fe-003): byte-frozen lossy projection + lossless model (additive field)
+        var em = window.__snapdeckEditorModel;
+        var annotations = em.projectAnnotations(model);    // box excluded; arrow/text byte-frozen
+        var losslessModel = em.serializeModel(model);      // {version:1, items:[…]} deep clone
         var buffers = window.__snapdeckBuffers || { console: [], network: [] };
         cleanup();
         resolve({
           original: imageDataUrl,
-          annotated: annotations.length ? annotated : null,
+          annotated: losslessModel.items.length ? annotated : null, // widened gate: includes box-only (fe-003)
           annotations: annotations,
+          model: losslessModel,
           meta: {
             url: location.href, title: document.title,
             viewport: { w: W, h: H, dpr: dpr },
@@ -253,6 +336,7 @@
     function btn(label, title) { var b = document.createElement("button"); b.textContent = label; b.title = title || label; el.appendChild(b); return b; }
     var arrow = btn("➤ Arrow", "Draw a red arrow (drag)");
     var text = btn("T Text", "Add a text comment (click)");
+    var box = btn("Box", "Draw a box (drag)"); // plain-text label per fe-001 (no emoji/inline SVG)
     var select = btn("⤢ Select", "Select / move / resize");
     var sep1 = document.createElement("span"); sep1.className = "snapdeck-sep"; el.appendChild(sep1);
     var undo = btn("↶ Undo"); var redo = btn("↷ Redo");
@@ -262,7 +346,7 @@
     var api = {
       el: el, onTool: null, onUndo: null, onRedo: null, onDone: null, onCancel: null,
       setTool: function (t) {
-        [["arrow", arrow], ["text", text], ["select", select]].forEach(function (p) {
+        [["arrow", arrow], ["text", text], ["box", box], ["select", select]].forEach(function (p) {
           p[1].classList.toggle("snapdeck-active", p[0] === t);
         });
       },
@@ -270,6 +354,7 @@
     };
     arrow.onclick = function () { api.onTool && api.onTool("arrow"); };
     text.onclick = function () { api.onTool && api.onTool("text"); };
+    box.onclick = function () { api.onTool && api.onTool("box"); };
     select.onclick = function () { api.onTool && api.onTool("select"); };
     undo.onclick = function () { api.onUndo && api.onUndo(); };
     redo.onclick = function () { api.onRedo && api.onRedo(); };

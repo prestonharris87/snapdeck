@@ -169,6 +169,73 @@ manifest-order + path-exists assertions to **this story's** test list (FE owns t
 file), and have do-001 reference rather than "contribute to" it. Decide explicitly;
 do not leave it implicit.
 
+## Security Review
+
+### Finding 1 — Untrusted `chrome.storage.local` toolbar position: parse + clamp guards are present and adequate (confirm)
+
+**Severity:** low (defense-in-depth; the store is extension-owned, not page-writable — see disposition)
+**Threat (STRIDE: Tampering / DoS).** This story is the home of the only trust
+boundary in the feature: a value read back from `chrome.storage.local`
+(`snapdeckEditorToolbarPos`) is applied to the toolbar's `left/top`. A
+corrupt/tampered/stale value (`NaN`/`Infinity`/`1e308`, wrong-typed geometry,
+`{left:"x"}`, `null`, an off-viewport coordinate after a window resize) must not
+(a) throw at `openEditor()`, (b) strand the toolbar off-screen, or (c) reach the
+`bar.el.style.left/top` sink as a non-numeric value that could inject CSS.
+**Assessment — guards confirmed adequate.** The API contract closes all three:
+- `parseStoredPos(raw)` returns `null` (never throws) for null / non-object /
+  non-finite / wrong-typed input via the `typeof v === "number" && isFinite(v)`
+  check (mirrors `editor.js:115` `isFiniteNum`) — closes the throw-at-open vector.
+  The `## Unit tests` case `parseStoredPos guards stored values` exercises exactly
+  this. ✓
+- `clampToViewport` coerces non-finite per-axis input to `0` and clamps off-screen
+  coordinates back into `[0, max(0, vw-tw)]` × `[0, max(0, vh-th)]` — closes the
+  strand-off-screen vector. Cases `clamps … back into view` /
+  `coerces non-finite input to 0 per axis (never NaN)` cover it. ✓
+- **Style-injection sub-vector closed transitively (verified):** `editor.js`
+  has **no `innerHTML`/`insertAdjacentHTML` sink** (grep, HEAD) — the only style
+  writes are numeric `.style.X = <n> + "px"` concatenations (e.g.
+  `editor.js:197-198`). Because `parseStoredPos`/`clampToViewport` guarantee the
+  applied `left/top` are **finite numbers**, the downstream `bar.el.style.left =
+  left + "px"` sink (fe-002) cannot carry an injected CSS string. The finite-number
+  guard IS the XSS/CSS-injection guard — keep `serializeToolbarPos` (write path)
+  and `parseStoredPos` (read path) BOTH enforcing finiteness so a malformed value
+  can never round-trip back as a string.
+**Why LOW, not MEDIUM/HIGH.** `chrome.storage.local` is written/read in the
+**isolated content-script world** (the `document_idle` manifest entry has no
+`"world"` key → isolated; only `capture.js` is `world: MAIN`, verified
+`manifest.json:34-43`). A web page cannot write or read this key — the only writer
+is the extension itself. So this is a robustness/defense-in-depth boundary against
+the extension's own corruption / a future bug / devtools tampering, not a
+page-reachable attack surface. This mirrors the w0 render-boundary robustness
+pattern (fe-004 malformed-model tolerance) and the lessons-file guidance that a
+first-party-source guard rates LOW.
+**Recommendation:** no story change — guards are specified correctly and the test
+cases pin them. Disposition: **accept as adequate.** One forward-looking note for
+the engineer: ensure the apply-on-open path actually routes through
+`parseStoredPos` → `clampToViewport` (not a raw `JSON.parse`/direct apply) so the
+guards are on the live path, not just unit-tested in isolation (fe-002 already
+specifies this; flagged here for symmetry).
+
+### STRIDE checklist disposition (feature-level, recorded once here)
+
+Recorded so the PO sees the default checklist was **applied, not skipped** — most
+items are N/A for a local, no-network Chrome-extension editor-chrome module:
+- **Authn/authz, CSRF, CORS, rate-limiting:** N/A — no HTTP endpoint, no server
+  surface (be-001 sentinel confirms). The extension's only access control (the
+  localhost host-guard in `addScreenshot()`, `background.js:112`) is untouched.
+- **Input validation:** the one untrusted input (stored toolbar pos) is validated
+  — see Finding 1. ✓
+- **Secrets:** none introduced; no credentials, tokens, or env config touched.
+- **Audit columns / soft-delete:** N/A — no server entity table (db-001 sentinel).
+- **Injection / parameterization:** N/A — no DB query; no string concatenation into
+  a query (the only concatenation is numeric `…+"px"`, guarded above).
+- **Output encoding / XSS:** N/A — no `innerHTML` sink; new chrome is CSS-painted
+  grip + plain-text button label (fe-002/fe-003). ✓
+- **Permission widening:** none — `storage` already granted (`manifest.json:6`);
+  no new permission / `host_permissions` / `commands` / `externally_connectable`
+  (do-001).
+- **Multi-tenant isolation:** N/A — single-user local tool, no tenancy model.
+
 ## Revisions
 
 ### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)

@@ -111,6 +111,29 @@ chrome.storage.local").
 
 - 2026-06-19 — created by database-architect (effort=1, sentinel, depends on none)
 
+## Security Review
+
+### Finding 1 — DB sentinel: no entity table means audit-column / tenancy / injection checks are N/A (clean)
+
+**Severity:** info (FYI — no finding, no action)
+**Threat (STRIDE: Repudiation / Tampering).** This sentinel asserts no server-side
+DB / migration / schema change. The data-store-side default-checklist items are N/A
+by construction — recorded so the PO sees they were applied, not skipped:
+- **Audit columns (created-by/changed-by/changed-at):** N/A — no server entity
+  table is created; toolbar position is browser-local `chrome.storage.local`
+  key→value (FE-owned), not an audited DB row.
+- **Soft-delete (inactive/deleted flag):** N/A — no DB record lifecycle; the single
+  `snapdeckEditorToolbarPos` key is overwritten in place.
+- **Injection / parameterization:** N/A — no SQL/DB query of any kind (no
+  server-side DB exists in this project).
+- **Multi-tenant isolation:** N/A — single-user local tool, no tenancy model.
+- **Unbounded growth:** N/A — a single fixed `chrome.storage.local` key (not the
+  per-`prefix:<id>` IndexedDB re-keying pattern that the lessons file flags for
+  growth), so no orphan-key accumulation.
+**Recommendation:** none. The 4 validate items already pin the no-DDL / no-IndexedDB
+/ no-`model`-touch / position-only-in-`chrome.storage.local` assertions. Disposition:
+**clean — accept.**
+
 ## Revisions
 
 ### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)

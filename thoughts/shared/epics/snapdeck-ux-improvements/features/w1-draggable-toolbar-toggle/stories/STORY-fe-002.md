@@ -260,6 +260,50 @@ isn't timing-flaky. No story change required.
 > container. The `stopPropagation`/pointer-capture is harmless belt-and-suspenders,
 > not the load-bearing isolation. Confirmed correct.
 
+## Security Review
+
+### Finding 1 — Stored-position apply path must route through the fe-001 guards (the live trust boundary)
+
+**Severity:** low (defense-in-depth)
+**Threat (STRIDE: Tampering).** This is the consumer that reads
+`snapdeckEditorToolbarPos` from `chrome.storage.local` and applies it to
+`bar.el.style.left/top` + writes the position back on drag end. It is the *live*
+side of the trust boundary whose guards are specified in fe-001 (the full
+disposition lives there — see STORY-fe-001 § Security Review Finding 1, rated LOW
+because the store is extension-owned and lives in the **isolated content-script
+world**, not page-reachable).
+**Assessment — story already specifies the safe path; confirming it:**
+- Read/apply path is correct: the story routes `raw → parseStoredPos(raw) →
+  clampToViewport(...) → bar.el.style.left/top` (lines 78-84) and explicitly says
+  "Do NOT re-implement clamp math inline." Keep it exactly that way — the node-tested
+  guards are only protective if they're on the live path. ✓
+- Write path is correct: drag-end persists via
+  `serializeToolbarPos({left, top})`, which returns `null` on non-finite input, so a
+  garbage value can't be written. Numeric-only round-trip is preserved end to end. ✓
+- **Style-sink is type-safe:** `editor.js` has no `innerHTML` sink (verified, HEAD);
+  the only style writes are numeric `.style.X = <n> + "px"` (e.g. `editor.js:197-198`).
+  Since the applied `left/top` are guaranteed finite numbers by the fe-001 guards,
+  the `bar.el.style.left = left + "px"` write cannot carry an injected CSS string.
+  No XSS / CSS-injection vector. ✓
+**Recommendation:** no change. Disposition: **accept.** Implementation guardrail for
+the engineer: if `parseStoredPos` returns `null` (corrupt/absent value), fall back to
+the CSS default-centered position and do **not** apply any `left/top` — never apply a
+partially-parsed object.
+
+### Finding 2 — Drag-end persistence write is bounded; no DoS / unbounded-growth concern
+
+**Severity:** info (FYI, no action)
+**Threat (STRIDE: DoS).** `chrome.storage.local.set` fires on `pointerup` (drag
+end), driven 1:1 by user pointer gestures — there is no programmatic loop and no
+async capture stacking (unlike the MV3 fire-and-forget listener pattern in the
+lessons file). It writes a **single fixed key** that is overwritten in place, so
+there is no per-key accumulation / unbounded-growth concern (contrast the
+per-`prefix:<id>` IndexedDB re-keying lesson — N/A here). Pointer-capture +
+`stopPropagation` keep the drag off the Konva stage (and, per the contrarian's
+verified note, the toolbar is a DOM sibling of the stage so isolation is structural
+regardless). No re-entrancy, no rate-limit need.
+**Recommendation:** none — recorded as FYI that the DoS axis was considered and is N/A.
+
 ## Revisions
 
 ### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)

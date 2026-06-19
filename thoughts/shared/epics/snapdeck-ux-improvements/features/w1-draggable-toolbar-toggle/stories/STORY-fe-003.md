@@ -294,6 +294,35 @@ footgun knowingly, not as an unflagged assumption. No story change required.
 > (`losslessModel.items.length ? annotated : null`) is untouched. Confirmed
 > correct.
 
+## Security Review
+
+### Finding 1 — Visibility toggle is pure local view state with no trust boundary (clean)
+
+**Severity:** info (FYI — no finding, no action)
+**Threat (STRIDE: all axes).** Walked the toggle against STRIDE and found no
+attack surface:
+- **Tampering / Information disclosure:** the toggle persists **nothing**
+  (`annShown` is a local `openEditor()`-scoped flag, not in `model`/`past`/`future`
+  and never written to any store — db-001/be-001 sentinels confirm). It flips
+  `annLayer`/`selectLayer`/`cursorLayer` `.visible()` + `batchDraw()` only. No data
+  read from or written to any boundary; nothing to tamper with or leak.
+- **Output encoding / XSS:** the new toggle button is a **plain-text label**
+  (`Hide`/`Show`) with a static `title`, created via the existing `btn()` pattern —
+  no emoji/inline-`<svg>`, and `editor.js` has no `innerHTML` sink (verified, HEAD).
+  Per the lessons-file note, Konva/canvas-rendered annotation content is not a
+  DOM-XSS vector either. No injection surface. ✓
+- **EoP:** no new permission, no new message type, no service-worker round-trip.
+- **Export guard correctness** (a robustness, not security, concern, recorded for
+  completeness): the `finish()` guard restores all three overlay layers before
+  `toDataURL` so a Done-while-hidden export is byte-identical to the never-toggled
+  path — the contrarian verified this against released `editor.js` and it is sound.
+  The draw/undo-while-hidden footgun (Finding 2 above) is a usability concern, not a
+  security one — no data-integrity or boundary impact (the model/undo behavior is
+  identical to the visible case; only the user's perception differs).
+**Recommendation:** none. Disposition: **clean — accept as view-only state with no
+trust boundary.** This is the expected outcome for a local no-network editor-chrome
+toggle.
+
 ## Revisions
 
 ### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)

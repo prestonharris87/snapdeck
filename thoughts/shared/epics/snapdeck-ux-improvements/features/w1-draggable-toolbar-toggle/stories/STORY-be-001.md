@@ -100,6 +100,29 @@ none
 
 - 2026-06-19 — created by backend-architect (sentinel, effort=1, depends on none)
 
+## Security Review
+
+### Finding 1 — Backend sentinel: empty diff means the server-side checklist is N/A (clean)
+
+**Severity:** info (FYI — no finding, no action)
+**Threat (STRIDE).** This sentinel asserts a genuinely empty backend diff (no
+`background.js`, no Python controller change). With no server/SW surface touched,
+the server-side default-checklist items are N/A by construction — recorded so the PO
+sees they were applied, not skipped:
+- **Authn/authz:** N/A — no endpoint added; the `ANNOTATE` resolve contract is
+  frozen and the localhost host-guard in `addScreenshot()` (`background.js:112`) is
+  unchanged (the extension's whole access-control story stays intact).
+- **Input validation / injection:** N/A — no new message handler, no new
+  `/report/save` field, no DB query. The only untrusted input in the feature (stored
+  toolbar pos) is guarded entirely content-script-side (see STORY-fe-001 § Security
+  Review).
+- **CSRF / CORS / rate-limiting:** N/A — no HTTP surface added.
+- **Secrets / audit / multi-tenant:** N/A — no credentials, no server entity table,
+  no tenancy model.
+**Recommendation:** none. The 3 validate items (empty backend diff / frozen
+`ANNOTATE` / position-never-on-a-backend-surface) are exactly the right
+diff-checkable assertions to confirm the sentinel holds. Disposition: **clean — accept.**
+
 ## Revisions
 
 ### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)

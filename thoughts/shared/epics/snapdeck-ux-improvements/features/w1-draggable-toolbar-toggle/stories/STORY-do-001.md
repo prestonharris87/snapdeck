@@ -242,6 +242,36 @@ Alternatively, declare `extension/editor.chrome.test.mjs` in this story's
 `files_modified` so the devops-validator expects the edit. Pick one explicitly — do
 not leave the guard's ownership implicit.
 
+## Security Review
+
+### Finding 1 — Manifest change widens no privilege; isolated-world registration adds no surface (clean)
+
+**Severity:** info (FYI — no finding, no action)
+**Threat (STRIDE: Elevation of privilege).** A manifest edit is the one place this
+feature could widen the extension's attack surface, so it was checked explicitly:
+- **No permission widening:** exactly one `js`-array element
+  (`content/editor-chrome.js`) is inserted into the **existing** `document_idle`
+  entry. No new `permissions`, `host_permissions`, `web_accessible_resources`,
+  `commands`, or `externally_connectable`. `storage` (backing the toolbar-position
+  persistence) is already granted (`manifest.json:6`). Per the lessons file, adding
+  a permission triggers Chrome's auto-update permission-disable — this story
+  correctly avoids that by reusing the already-declared surface. ✓
+- **Isolated world preserved:** the target entry has no `"world"` key → injects in
+  the **isolated** content-script world (verified `manifest.json:34-43`; only
+  `capture.js` is `world: MAIN`). So `editor-chrome.js`'s
+  `globalThis.__snapdeckEditorChrome` is **not page-reachable** — a web page cannot
+  read or overwrite it. The new module is also pure/side-effect-free (fe-001), so it
+  adds no runtime surface regardless. ✓
+- **No host-guard change:** the localhost host-guard in `addScreenshot()`
+  (`background.js`) and the `matches: http://localhost/*, http://127.0.0.1/*`
+  patterns are untouched. ✓
+- **Load-order guard is a robustness net, not security:** the
+  `index(editor-model) < index(editor-chrome) < index(editor)` assertion (owned by
+  fe-001's test) protects against a runtime `undefined` global, not an attacker.
+**Recommendation:** none. Disposition: **clean — accept.** The `git diff` no-scope-creep
+validate item (devops-validator auto-rejects any unrelated manifest change) is the
+right guard and aligns with the security posture.
+
 ## Revisions
 
 ### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)

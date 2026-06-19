@@ -112,9 +112,10 @@ stored `screenshots[].model`.
       hydration → Done round-trip unchanged.
 - [ ] **Malformed-item render tolerance** _(promoted from the security-architect LOW)_: hydrating a
       `version:1` payload whose items carry non-finite or wrong-typed geometry
-      (`NaN`/`Infinity`/string `width`) renders **without throwing or emitting a console error** — bad
-      items are skipped or coerced at the render dispatch (`render()` / `renderBox`/`renderArrow`), keeping
-      `deserializeModel`'s opaque pass-through unchanged.
+      (`NaN`/`Infinity`/`1e308`/string `width`) renders **without throwing or emitting a console error**
+      (bad items skipped/coerced), **and** an oversized item-count or multi-megabyte `text` is **bounded**
+      (item-count cap + text-length cap) so it can't hang/DoS the editor — all at the render dispatch
+      (`render()` / `renderBox`/`renderArrow`), keeping `deserializeModel`'s opaque pass-through unchanged.
 
 ## Motion contract
 

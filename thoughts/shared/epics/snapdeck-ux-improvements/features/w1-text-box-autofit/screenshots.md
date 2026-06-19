@@ -7,7 +7,7 @@ feature: w1-text-box-autofit
 #   partial   → /mat_implement_feature Phase 5b captured SOME but not all requirements
 #   complete  → every requirement has a capture under screenshots/<req-id>.png
 #   n/a       → non-UI feature (skip_ui_designer / frontend_lane: N/A); nothing to capture
-status: required
+status: complete
 authored_by: product-owner
 authored_at: 2026-06-19T15:48:00Z
 ---

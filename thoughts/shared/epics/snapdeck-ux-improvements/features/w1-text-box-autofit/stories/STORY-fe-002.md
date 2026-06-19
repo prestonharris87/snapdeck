@@ -319,3 +319,54 @@ Status promoted pending → approved. No cross-domain conflict (be/db/do sentine
 both revisions are within this FE story's owned code. FE-architect confirmed both revisions implementable
 as written (clamp+short-circuit is the load-bearing fix; pinned `fontFamily` is a render constant, not
 stored on the model item, so round-trip stays model-byte identity).
+
+## Security Review
+
+_Phase 7 STRIDE pass (security-architect). This story carries the feature's only material threat surface
+— the auto-fit fit loop running on hostile/oversized geometry+text via the **re-open-arbitrary-stored-
+model** path that `w2-screenshot-gallery` will exercise. Claims grounded against released
+`extension/content/editor.js` (lines cited inline)._
+
+### Finding 1 — Auto-fit "no throw / no hang" DoS contract is MET; a narrow residual worst-case-slow band remains on re-opened crafted models
+
+**Severity:** low (defense-in-depth)
+**Threat (STRIDE — Denial of service, resource exhaustion):** The contrarian's concern that drove this
+story's revision (negative `Konva.Text` width on a finite thin box → **unspecified** Konva wrap behavior,
+unprovable cost) is closed: the required clamp `innerW/innerH = Math.max(1, dim − 2*PAD)` guarantees a
+**positive (specified) wrap width**, the degenerate short-circuit (`dim < 2*PAD` ⇒ `TEXT_AUTOFIT_MIN`,
+skip the loop) removes the cheapest-to-abuse case, and the loop is bounded by `(cap−min)=42` iterations
+over `safeText` capped at `RENDER_TEXT_CAP=10000` (`editor.js:114,150`), across at most
+`RENDER_ITEM_CAP=500` items (`editor.js:113,100`). So auto-fit **terminates** — the "does not throw or
+hang" contract `w2-screenshot-gallery` relies on **holds**. **Residual (the reason this is recorded, not
+just dismissed):** the short-circuit fires on the **raw** dimension (`item.width < 2*PAD`, i.e. `< 12`),
+but the **clamped** `innerW` still lands at its `1` floor for a box width in the narrow band
+`[2*PAD, ~2*PAD+a few px]` (≈ 12–18px) — there the loop **does** run, measuring a space-heavy ≤10 000-char
+`text` wrapped at a 1–6px width (Konva `wrap:"word"` breaks at every space → up to a few-thousand wrapped
+lines per measurement, ×42, ×≤500 items). That is **bounded but worst-case-slow** (a sub-second to
+low-seconds main-thread stall), and it is only reachable via a **crafted/corrupted** model — the `model`
+arrives from the extension's **own IndexedDB** per-screenshot record (isolated-world, **not** page-
+writable, **not** network; grounded at `editor.js:86`, `manifest.json:39-44` no-`world` + no
+`externally_connectable`). So this is a **defense-in-depth resilience** property against the extension's
+own corruption / a future bug / devtools-planted data — **not an externally-reachable DoS**.
+**Recommendation (optional, cheap, NON-BLOCKING):** extend the degenerate short-circuit to key on the
+**clamped inset** rather than only the raw dimension — i.e. when `Math.max(1, item.width − 2*PAD)` (or the
+`innerH` equivalent) hits the `1` floor, route to `TEXT_AUTOFIT_MIN` + the Group `clip` and skip the
+measurement loop, exactly as the existing `dim < 2*PAD` branch does. One comparison change in the fit
+helper, no new abstraction, no change to `editor-model.js`/the draw threshold/released code. The existing
+clamp + caps already satisfy the contract; this only removes the residual slow band. **Forward-flag to
+`w2-screenshot-gallery`:** that feature is the one that actually re-opens arbitrary stored models through
+this render boundary — its STRIDE pass should confirm re-open of a maliciously-crafted/corrupted model is
+bounded, with the inherited `RENDER_TEXT_CAP`/`RENDER_ITEM_CAP` + this clamp/short-circuit as the
+load-bearing protection (this feature establishes that path; it does not yet expose it to a re-open UI).
+
+### Finding 2 — `renderText` rewrite renders via `Konva.Text` (canvas), not an HTML sink — no DOM-XSS
+
+**Severity:** info
+**Threat (STRIDE — Information disclosure / Tampering, rendering sink):** The rewritten `renderText`
+composes a `Konva.Group(Rect+Text)` on `annLayer` (canvas), with `safeText` length-capped before
+measuring (`editor.js:150`). No `innerHTML`/raw-HTML path exists; the white-fill/red-outline/black-text
+styling and the pinned `fontFamily` are Konva node attributes, not interpolated markup or a `style`
+string. A hostile `text` field is rendered as literal canvas glyphs.
+**Recommendation:** none (record-only). Keep the render on `Konva.Text` and the geometry guard mirroring
+`renderBox` (`editor.js:171-173`); the explicit `fontFamily` constant is a render-only value (not stored
+on the model item), so it does not affect the model-byte round-trip or add an injection surface.

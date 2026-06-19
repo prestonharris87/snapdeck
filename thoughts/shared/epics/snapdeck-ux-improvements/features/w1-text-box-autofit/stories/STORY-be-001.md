@@ -115,3 +115,17 @@ text-item fields genuinely ride with zero backend change; the BE/DB/FE peer-coor
 (the sentinel shipped without one — a recurring gap in architect-authored sentinels). Empty-diff +
 byte-identical-upstream + no-new-IPC are the checkable assertions for the backend-validator. Status
 promoted pending → approved.
+
+## Security Review
+
+**Severity:** info — _reviewed, no finding._ The persistence/auth trust boundary was grounded directly in
+`extension/background.js`: `addScreenshot()` stores `model: resp.model ?? null` **verbatim/opaque**
+(`background.js:225`), so the new `width`/`height` text-item fields ride inside `screenshots[].model`
+(extension-owned IndexedDB) with no enumeration/whitelist; `saveReport()`'s upstream `/report/save`
+payload map (`background.js:248-252`) **excludes `model`**, so the new fields never leak upstream. The
+`localhost`/`127.0.0.1` host guard (`background.js:197`, already using the tightened `(:|/|$)` boundary
+anchor) and the loopback-only controller are untouched — **no auth path toggled, no new network surface,
+no new manifest permission**. The `ANNOTATE` channel is same-extension `chrome.runtime` messaging
+(`background.js:209`) with **no `externally_connectable`** in the manifest, so it is not web-reachable.
+This sentinel introduces no new trust assumption. (No HTTP endpoint, no server entity table, not
+multi-tenant → authn/authz/CSRF/CORS/rate-limit/audit-column checklist items are N/A by construction.)

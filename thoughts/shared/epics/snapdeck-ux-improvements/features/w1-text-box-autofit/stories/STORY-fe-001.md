@@ -275,3 +275,45 @@ fit-helper **clamp + short-circuit** in fe-002 (see fe-002 Revisions, Concern 1)
 the two thresholds are reconciled consciously rather than by accident.
 
 Status promoted pending → approved. No cross-domain conflict; this story needs no code revision.
+
+## Security Review
+
+_Phase 7 STRIDE pass (security-architect), single-feature-review mode. Every "existing X does Y" claim
+grounded by opening released `extension/content/editor.js`, `extension/content/editor-model.js`, and
+`extension/manifest.json` (lines cited inline)._
+
+### Finding 1 — Box-aware `editText` loads existing text into a `<textarea>.value`, not an HTML sink (no DOM-injection)
+
+**Severity:** info
+**Threat (STRIDE — Tampering / Information disclosure, rendering sink):** This story makes `editText`
+box-aware (positions/sizes the `.snapdeck-textedit` textarea to `{x,y,width,height}`). The authoring/
+re-edit path loads existing text via `ta.value = item.text || ""` (`editor.js:195`) — a **`.value`
+assignment on a `<textarea>`**, not `innerHTML`/`insertAdjacentHTML`/`outerHTML` — and committed text
+renders only through `Konva.Text` (canvas; `editor.js:150-155`). There is **no `innerHTML` anywhere in
+`editor.js`**. So a hostile `text` field (e.g. `<img src=x onerror=…>`) is treated as literal characters
+on both the edit (textarea value) and render (canvas glyph) paths — **not a script-injection vector**.
+The new `width`/`height` fields are numeric geometry, never interpolated into markup or a style string.
+**Recommendation:** none (record-only). Keep `editText` on the `ta.value` assignment (`editor.js:195`)
+and `renderText` on `Konva.Text`; do not add any raw-HTML path for the textarea or a future label. No
+DOM-XSS surface is added by this story. (Consistent with the standing lessons note: Konva/canvas text
+edited via `textarea.value` is N/A for DOM-XSS — do not manufacture an XSS finding.)
+
+### Checklist disposition (grounded — confirms the checklist was applied, not skipped)
+
+- **Spoofing / Elevation of privilege:** N/A — no network endpoint, no auth surface. The editor content-
+  script entry is **isolated-world** (`manifest.json:39-44` has **no `"world"` key**; only `capture.js`
+  is `"world":"MAIN"` at `manifest.json:36`) and there is **no `externally_connectable`**, so page JS
+  cannot reach the `chrome.runtime` `ANNOTATE` channel (`editor.js:12-19`) nor read/overwrite the model.
+  Not multi-tenant.
+- **Tampering / trust boundary:** the `model` is hydrated from the extension's own service-worker IPC /
+  IndexedDB record (`editor.js:86` `deserializeModel(initialModel)`), not page-writable and not network —
+  no new trust assumption is introduced by adding opaque `width`/`height`. `deserializeModel` validates
+  the **envelope** (`editor-model.js:72-81`) and passes items through opaquely **by design**; item-field
+  sanity stays a render-boundary concern in `editor.js` (the correct split — do **not** add per-item
+  validation to the pure module).
+- **Repudiation:** N/A — local single-user dev tool; no server entity table, so audit columns do not apply.
+- **DoS:** the draw-threshold (`>4`, `editor.js:254`) ↔ fit-inset interaction is handled in fe-002
+  (clamp + short-circuit); see the fe-002 Security Review.
+- **Permissions/secrets:** no manifest/permission/host/network change; no secrets in scope (confirmed
+  against `manifest.json` + the be/db/do sentinels). `projectAnnotations` byte-frozen (no width/height
+  leak; `editor-model.js:54-58`).

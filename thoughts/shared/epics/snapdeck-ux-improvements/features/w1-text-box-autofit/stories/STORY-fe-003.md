@@ -315,3 +315,28 @@ loose-then-tight intermediate + a one-line story contradiction, the **tight gate
 from the start** (fe-002's "Interaction handlers preserved" bullet + its "Currently (post-fe-002)"
 baseline here both read the tight gate); this story retains the contract rationale + the transformer
 attach + verification. Released `renderBox` stays loose (preserves fe-001's no-regression AC) — unchanged.
+
+## Security Review
+
+_Phase 7 STRIDE pass (security-architect). Claims grounded against released
+`extension/content/editor.js` (lines cited inline)._
+
+### Finding — Select/move/resize reuses the frozen shared `attachBoxTransformer`; no new security surface
+
+**Severity:** info
+**Threat (STRIDE):** none material across S/T/R/I/D/E. This story only adds the
+`attachBoxTransformer(group, item)` attach to `renderText`'s selected block — the **frozen** shared helper
+(`editor.js:57-70`), reused unchanged (no parallel transformer). All effects are local Konva node
+manipulation plus `snapshot()`/`render()` on the **in-memory** `model`; the resize write-back bakes
+`Math.max(1, node.width()*node.scaleX())` / `…height…` into **numeric** `width/height` and writes numeric
+`x/y` on `dragend` (`editor.js:64-65,69`) — numeric only, never interpolated into markup or a `style`
+string, so no injection vector is introduced. No new persistence path, no new `chrome.runtime` message
+type/resolve field, no network call, no manifest/permission/host change (confirmed against the be/db/do
+sentinels + `manifest.json`). The unselected-body-drag move-loss the contrarian flagged (resolved by PO
+via the tight `draggable` gate `tool==="select" && selectedId===item.id`) is a **data-integrity / UX**
+concern, **not** a confidentiality/integrity-against-an-attacker issue — the data source remains the
+extension's own isolated-world `model`, not page- or network-controlled.
+**Recommendation:** none (record-only). Keep `attachBoxTransformer` frozen (do not fork it); the geometry
+write-back staying **numeric** (`editor.js:64-65,69`) is precisely what keeps this resize/move surface free
+of a style/markup-injection vector. The lossless round-trip this story verifies rides the same opaque
+extension-owned `model` path — no new trust boundary.

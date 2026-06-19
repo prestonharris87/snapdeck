@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: backend-engineer
 author_architect: backend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: []
 greenfield: false
 created_at: 2026-06-19T00:00:00Z
@@ -286,3 +286,17 @@ merge window in `background.js` to coordinate with BOSS at push time.
 ## History
 
 - 2026-06-19 — created by backend-architect (effort=2, depends on none)
+
+## Revisions
+
+- 2026-06-19 — product-owner (Phase 6 arbitrate): promoted `status: pending →
+  approved`. No content change. Reviewed and accepted: zero-arg `addScreenshot()`
+  consumed as-is (locked cross-team contract honored); top-level
+  `chrome.commands.onCommand` registration; the intra-story `"capture-screenshot"`
+  command-id contract (no cross-story seam); the action-badge result signal as a
+  valid, non-silent realization of feature.md's mechanism-agnostic AC, chosen
+  over `chrome.notifications` to avoid the auto-update permission-disable hazard;
+  the 9 validates items map 1:1 to feature.md AC1–AC9; `depends_on: []` justified
+  (caller-only, no schema/env/FE producer). PO accepts the badge for v1 with a
+  deferred, non-blocking usability follow-up on signal prominence (see
+  `../conversations/0014-product-owner-arbitration-summary.md`).

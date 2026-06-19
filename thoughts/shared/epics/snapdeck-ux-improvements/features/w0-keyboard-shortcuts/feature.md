@@ -184,7 +184,7 @@ feature's scope and introduce no new animation.
 
 ## Stories (populated by architects)
 
-- (none yet)
+- STORY-be-001 — Capture keyboard-shortcut command + onCommand listener + badge signal (backend; effort 2; depends_on: none)
 
 ## Defects (populated as found)
 

@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: devops-engineer
 author_architect: devops-architect
 effort: 1
-status: pending
+status: approved
 sentinel: true
 sentinel_rationale: >-
   Snapdeck is an unpacked Chrome extension with no build system, no repo-root
@@ -100,15 +100,16 @@ conclusion via their own peer messages to backend.
 
 ## How we validate
 
-- The devops story diff for this feature is **empty** — `devops-validator`
-  confirms no CI/build/config/observability file is touched by any story in this
-  feature.
-- `git diff --stat` against the feature branch shows no changes to any
-  build-system, pipeline, env-config, or observability file (there are none to
-  change).
-- If a DevOps-domain change (a new pipeline, a build step, an env var, a
-  telemetry hook) ever appears in this feature's diff, this sentinel is wrong and
-  must be reopened.
+- [ ] The devops story diff for this feature is **empty** — `devops-validator`
+      confirms no CI/build/config/observability file is touched by any story in
+      this feature.
+- [ ] `git diff --stat` against the feature branch shows no changes to any
+      build-system, pipeline, env-config, or observability file (there are none
+      to change).
+
+If a DevOps-domain change (a new pipeline, a build step, an env var, a telemetry
+hook) ever appears in this feature's diff, this sentinel is wrong and must be
+reopened.
 
 ## Unit tests
 
@@ -131,3 +132,14 @@ story (no cross-story dependency seam, by design and by agreement).
   No-DevOps-work decision peer-confirmed with backend-architect; manifest
   `commands` block ownership assigned to backend by mutual agreement. See
   `../conversations/` for the on-the-record exchange.
+
+## Revisions
+
+- 2026-06-19 — product-owner (Phase 6 arbitrate): promoted `status: pending →
+  approved`. Converted the two plain-bullet validation items under `## How we
+  validate` to `- [ ]` checklist form for an unambiguous validates checklist —
+  meaning unchanged. Sentinel rationale (no build/CI/config/observability
+  surface; `commands` block owned by backend's cohesive service-worker story)
+  accepted as correct; the badge-over-`notifications` operational note is
+  consistent with STORY-be-001's chosen signal. See
+  `../conversations/0014-product-owner-arbitration-summary.md`.

@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 1
-status: pending
+status: approved
 sentinel: true
 depends_on: []
 diff_estimate: mechanical
@@ -99,3 +99,11 @@ existing `addScreenshot()` seam.)
 - 2026-06-18 — created by frontend-architect (effort=1, sentinel, depends on none).
   No-FE-work decision peer-confirmed with backend-architect (see
   `thoughts/shared/epics/snapdeck-ux-improvements/conversations/`).
+
+## Revisions
+
+- 2026-06-19 — product-owner (Phase 6 arbitrate): promoted `status: pending →
+  approved`. No content change — the no-FE-work sentinel is correct
+  (popup/content/overlay explicitly out of scope; the result signal is the
+  background worker's action badge, not a popup/overlay render). validates
+  checklist present. See `../conversations/0014-product-owner-arbitration-summary.md`.

@@ -117,6 +117,62 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // --- keyboard shortcut command -----------------------------------------------
 let captureInFlight = false;
 
+// Per-tabId flash bookkeeping (DEF-001 — badge-flash shadow fix).
+// The capture-result `!`/`✓` flash is scoped to the active tab's tabId so it
+// takes precedence over any per-tab steady-state badge another feature paints on
+// that tab (e.g. the report-in-progress count badge). On teardown we clear ONLY
+// that tab's badge; the steady-state owner re-asserts via its own wake-reconcile
+// (DEF-001 resolution: option c — no cross-feature seam / storage write).
+let flashTabId = null; // tab currently showing a kb flash (null = none / global)
+let flashTimer = null; // pending teardown timer id
+
+/** Clear kb's flash on `tabId` (per-tab); falls back to the global badge when no
+ *  tab was resolved. The steady-state badge owner re-asserts on its next wake. */
+function clearFlash(tabId) {
+  if (tabId == null) {
+    chrome.action.setBadgeText({ text: "" });
+    chrome.action.setTitle({ title: "Snapdeck" });
+    return;
+  }
+  chrome.action.setBadgeText({ tabId, text: "" });
+  chrome.action.setTitle({ tabId, title: "Snapdeck" });
+}
+
+/** Cancel any pending flash teardown and clear its tab immediately. Run at the
+ *  start of a new invocation so a still-showing prior flash is handed back —
+ *  WITHOUT blanking the *current* tab's steady-state badge (no destructive
+ *  pre-clear: a cancelled / in-flight capture must leave the count intact). */
+function cancelPendingFlash() {
+  if (flashTimer !== null) {
+    clearTimeout(flashTimer);
+    flashTimer = null;
+  }
+  if (flashTabId !== null) {
+    const prev = flashTabId;
+    flashTabId = null;
+    clearFlash(prev);
+  }
+}
+
+/** Paint kb's `!`/`✓` flash on `tabId` (or the global badge when tabId is null). */
+function setFlash(tabId, text, color, title) {
+  const target = tabId == null ? {} : { tabId };
+  chrome.action.setBadgeText({ ...target, text });
+  chrome.action.setBadgeBackgroundColor({ ...target, color });
+  if (title != null) chrome.action.setTitle({ ...target, title });
+}
+
+/** Schedule kb's flash on `tabId` to self-clear after `ms`. */
+function scheduleFlashClear(tabId, ms) {
+  flashTabId = tabId;
+  flashTimer = setTimeout(() => {
+    flashTimer = null;
+    const t = flashTabId;
+    flashTabId = null;
+    clearFlash(t);
+  }, ms);
+}
+
 chrome.commands.onCommand.addListener((command) => {
   if (command !== "capture-screenshot") return;
   // fire-and-forget; result is surfaced via the action badge, not a return value
@@ -127,44 +183,38 @@ async function runCaptureCommand() {
   if (captureInFlight) return;
   captureInFlight = true;
   try {
-    // Neutral badge reset at start of every invocation so a prior error badge
-    // never lingers and a cancelled run ends neutral.
-    chrome.action.setBadgeText({ text: "" });
-    chrome.action.setTitle({ title: "Snapdeck" });
+    // Hand back any still-showing prior flash (cancel its timer + clear its tab).
+    // We deliberately do NOT blank the *current* tab here.
+    cancelPendingFlash();
+
+    // Resolve the active tab so the flash is scoped to it (per-tabId precedence).
+    let tabId = null;
+    try {
+      const tab = await activeTab();
+      if (tab && tab.id != null) tabId = tab.id;
+    } catch (_) {
+      tabId = null; // fall back to a global flash (still non-silent)
+    }
+
     let result;
     try {
       result = await addScreenshot();
     } catch (e) {
       // INFO-2: a thrown error (e.g. unexpected chrome.tabs rejection) is also
       // a non-silent failure — map it onto the same red "!" error badge.
-      chrome.action.setBadgeText({ text: "!" });
-      chrome.action.setBadgeBackgroundColor({ color: "#C0392B" });
-      chrome.action.setTitle({ title: e.message || String(e) });
-      setTimeout(() => {
-        chrome.action.setBadgeText({ text: "" });
-        chrome.action.setTitle({ title: "Snapdeck" });
-      }, 4000);
+      setFlash(tabId, "!", "#C0392B", e.message || String(e));
+      scheduleFlashClear(tabId, 4000);
       return;
     }
     if (result && result.error) {
-      chrome.action.setBadgeText({ text: "!" });
-      chrome.action.setBadgeBackgroundColor({ color: "#C0392B" });
-      chrome.action.setTitle({ title: result.error });
-      setTimeout(() => {
-        chrome.action.setBadgeText({ text: "" });
-        chrome.action.setTitle({ title: "Snapdeck" });
-      }, 4000);
+      setFlash(tabId, "!", "#C0392B", result.error);
+      scheduleFlashClear(tabId, 4000);
     } else if (result && result.ok) {
-      chrome.action.setBadgeText({ text: "✓" });
-      chrome.action.setBadgeBackgroundColor({ color: "#1E8E3E" });
-      setTimeout(() => {
-        chrome.action.setBadgeText({ text: "" });
-        chrome.action.setTitle({ title: "Snapdeck" });
-      }, 2000);
+      setFlash(tabId, "✓", "#1E8E3E", null);
+      scheduleFlashClear(tabId, 2000);
     }
-    // { cancelled: true }: neutral reset already applied at start; no additional
-    // badge signal — the net effect is neutral (satisfies the cancelled-no-false-
-    // signal AC).
+    // { cancelled: true }: no badge change at all — the tab's steady-state badge
+    // is left intact (no false signal; report count preserved).
   } finally {
     captureInFlight = false;
   }

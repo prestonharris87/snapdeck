@@ -95,7 +95,8 @@ let mockTabsQueryResult  = null; // Array | () => Promise
 let mockCaptureResult    = 'data:image/png;base64,FAKE'; // string | () => Promise
 let mockSendMessageResult = null; // value | () => Promise
 let captureVisibleTabCallCount = 0;
-let badgeTextCalls       = [];
+let badgeTextCalls       = []; // obj.text only (legacy assertions)
+let badgeTextObjCalls    = []; // { text, tabId } — DEF-001 per-tabId assertions
 let badgeBgColorCalls    = [];
 let badgeTitleCalls      = [];
 
@@ -128,7 +129,7 @@ globalThis.chrome = {
     },
   },
   action: {
-    setBadgeText(obj)           { badgeTextCalls.push(obj.text); },
+    setBadgeText(obj)           { badgeTextCalls.push(obj.text); badgeTextObjCalls.push({ text: obj.text, tabId: obj.tabId }); },
     setBadgeBackgroundColor(obj){ badgeBgColorCalls.push(obj.color); },
     setTitle(obj)               { badgeTitleCalls.push(obj.title); },
   },
@@ -173,12 +174,21 @@ const ANNOTATE_OK_RESP = {
 // beforeEach — reset per-test mutable state
 // ---------------------------------------------------------------------------
 beforeEach(() => {
+  // Flush any flash-teardown timer a prior test captured-but-didn't-fire, so
+  // background.js's module-scope flashTabId/flashTimer (DEF-001) don't leak
+  // across tests. Fire BEFORE resetting the call arrays so the flush's badge
+  // calls land in the about-to-be-cleared arrays.
+  while (_capturedTimeouts.length) {
+    const fn = _capturedTimeouts.shift();
+    try { fn(); } catch (_) { /* ignore */ }
+  }
   _kv                         = {};
   mockTabsQueryResult         = null;
   mockCaptureResult           = 'data:image/png;base64,FAKE';
   mockSendMessageResult       = null;
   captureVisibleTabCallCount  = 0;
   badgeTextCalls              = [];
+  badgeTextObjCalls           = [];
   badgeBgColorCalls           = [];
   badgeTitleCalls             = [];
   _capturedTimeouts.length    = 0;
@@ -246,10 +256,12 @@ test('onCommand_localhostTab_completedAnnotate_setsSuccessBadge', async () => {
 });
 
 /**
- * AC8 — cancelled annotation → no success and no error badge; report unchanged;
- * badge ends neutral (only the start-of-invocation neutral reset was applied).
+ * AC8 — cancelled annotation → no success and no error badge; report unchanged.
+ * DEF-001 (c): the destructive start-of-invocation neutral reset was DROPPED, so
+ * a cancelled run makes ZERO badge calls — it must NOT blank the active tab's
+ * steady-state badge (the report-in-progress count is preserved).
  */
-test('onCommand_cancelledAnnotate_leavesBadgeNeutral', async () => {
+test('onCommand_cancelledAnnotate_leavesBadgeUntouched', async () => {
   mockTabsQueryResult   = [LOCALHOST_TAB];
   mockSendMessageResult = { cancelled: true };
 
@@ -258,11 +270,12 @@ test('onCommand_cancelledAnnotate_leavesBadgeNeutral', async () => {
 
   assert.ok(!badgeTextCalls.includes('!'), 'must not set error badge on cancel');
   assert.ok(!badgeTextCalls.includes('✓'), 'must not set success badge on cancel');
-  // The only badge text set is the neutral reset "" at start
+  // DEF-001: cancelled → no badge touch at all (no destructive pre-clear),
+  // so the steady-state per-tab badge another feature painted is preserved.
   assert.deepStrictEqual(
-    badgeTextCalls.filter(t => t !== ''),
+    badgeTextObjCalls,
     [],
-    'only the neutral reset ("") badge text is expected; no error or success text'
+    'cancelled must not touch the badge at all (count preserved — no destructive pre-clear)'
   );
   // No screenshots stored (key is report:3000 for LOCALHOST_TAB at :3000)
   const report = _kv['report:3000'];
@@ -298,8 +311,17 @@ test('onCommand_overlayUnavailable_setsErrorBadge', async () => {
  */
 test('onCommand_reentrantPress_ignoredWhileInFlight', async () => {
   let resolveTabsQuery;
-  // tabs.query returns a promise that we control — keeps the first invocation in-flight
-  mockTabsQueryResult   = () => new Promise(res => { resolveTabsQuery = res; });
+  // runCaptureCommand() now calls activeTab() itself (to scope the flash to the
+  // active tabId, DEF-001) AND addScreenshot() calls it internally → two
+  // tabs.query calls per invocation. Hold the FIRST call to keep the first
+  // invocation in-flight; resolve subsequent calls immediately so the unblocked
+  // first invocation can complete its single capture.
+  let tabsQueryCalls    = 0;
+  mockTabsQueryResult   = () => {
+    tabsQueryCalls++;
+    if (tabsQueryCalls === 1) return new Promise(res => { resolveTabsQuery = res; });
+    return Promise.resolve([LOCALHOST_TAB]);
+  };
   mockSendMessageResult = ANNOTATE_OK_RESP;
 
   // Fire first command.
@@ -334,4 +356,115 @@ test('onCommand_addScreenshotThrows_setsErrorBadge', async () => {
 
   assert.ok(badgeTextCalls.includes('!'), 'error "!" badge must fire on addScreenshot() throw');
   assert.ok(badgeBgColorCalls.includes('#C0392B'), 'error badge color must be red');
+});
+
+// ===========================================================================
+// DEF-001 — badge-flash shadow fix.
+// The `!`/`✓` flash is scoped to the active tab's tabId so it takes precedence
+// over a per-tab steady-state badge (e.g. the report-in-progress count) another
+// feature paints on that tab. Option (c): per-tab flash + self-clear +
+// cancel-prior-timer; NO cross-feature seam / storage write.
+// ===========================================================================
+
+/** A second localhost tab (distinct tabId) for prior-tab handback tests. */
+const LOCALHOST_TAB_2 = { id: 7, url: 'http://localhost:4000/', windowId: 1 };
+
+/**
+ * DEF-001 (repro/headline) — the error flash MUST be set on the active tab's
+ * {tabId}, not the global badge. Pre-fix the call was setBadgeText({ text: "!" })
+ * (no tabId) → shadowed by a per-tab count badge. This assertion FAILS against
+ * the pre-fix code and PASSES post-fix.
+ */
+test('onCommand_errorFlash_scopedToActiveTabId_notGlobal', async () => {
+  mockTabsQueryResult   = [LOCALHOST_TAB];
+  mockSendMessageResult = () => Promise.reject(new Error('Could not establish connection'));
+
+  commandListener('capture-screenshot');
+  await settle();
+
+  assert.ok(
+    badgeTextObjCalls.some(o => o.text === '!' && o.tabId === LOCALHOST_TAB.id),
+    'error "!" flash must be set on the active tab\'s {tabId} (per-tab precedence), not the global badge'
+  );
+  assert.ok(
+    !badgeTextObjCalls.some(o => o.text === '!' && o.tabId === undefined),
+    'error "!" flash must NOT be set on the global (no-tabId) badge'
+  );
+});
+
+/**
+ * DEF-001 — the success flash MUST be set on the active tab's {tabId}.
+ */
+test('onCommand_successFlash_scopedToActiveTabId', async () => {
+  mockTabsQueryResult   = [LOCALHOST_TAB];
+  mockSendMessageResult = ANNOTATE_OK_RESP;
+
+  commandListener('capture-screenshot');
+  await settle();
+
+  assert.ok(
+    badgeTextObjCalls.some(o => o.text === '✓' && o.tabId === LOCALHOST_TAB.id),
+    'success "✓" flash must be set on the active tab\'s {tabId}'
+  );
+  assert.ok(
+    !badgeTextObjCalls.some(o => o.text === '✓' && o.tabId === undefined),
+    'success "✓" flash must NOT be set on the global badge'
+  );
+});
+
+/**
+ * DEF-001 (timeout-teardown trigger) — when the flash self-clear timer fires, kb
+ * clears ONLY that tab's badge (per-tabId), handing it back to the steady-state
+ * owner. No global clear; no storage write (option c).
+ */
+test('onCommand_flashTeardown_clearsActiveTabBadgePerTabId', async () => {
+  mockTabsQueryResult   = [LOCALHOST_TAB];
+  mockSendMessageResult = ANNOTATE_OK_RESP;
+
+  commandListener('capture-screenshot');
+  await settle();
+
+  // Fire the captured self-clear timer.
+  const pending = _capturedTimeouts.splice(0);
+  pending.forEach(fn => fn());
+
+  assert.ok(
+    badgeTextObjCalls.some(o => o.text === '' && o.tabId === LOCALHOST_TAB.id),
+    'teardown must clear the active tab\'s badge per-tabId ({ tabId, text: "" })'
+  );
+});
+
+/**
+ * DEF-001 (rapid-re-press trigger) — a new invocation while a prior flash is
+ * still showing cancels the prior timer AND hands the PRIOR tab back (clears its
+ * badge), without blanking the new tab's steady-state badge.
+ */
+test('onCommand_rapidRePress_handsBackPriorTab', async () => {
+  // Run 1: error flash on tab 1 (schedules a self-clear timer; captured not fired).
+  mockTabsQueryResult   = [LOCALHOST_TAB];
+  mockSendMessageResult = () => Promise.reject(new Error('Could not establish connection'));
+  commandListener('capture-screenshot');
+  await settle();
+  assert.ok(
+    badgeTextObjCalls.some(o => o.text === '!' && o.tabId === LOCALHOST_TAB.id),
+    'run 1 must flash "!" on tab 1'
+  );
+
+  // Isolate run 2's badge calls.
+  badgeTextObjCalls = [];
+
+  // Run 2: a cancelled capture on a DIFFERENT tab — its start must hand tab 1 back.
+  mockTabsQueryResult   = [LOCALHOST_TAB_2];
+  mockSendMessageResult = { cancelled: true };
+  commandListener('capture-screenshot');
+  await settle();
+
+  assert.ok(
+    badgeTextObjCalls.some(o => o.text === '' && o.tabId === LOCALHOST_TAB.id),
+    'run 2 start must hand the PRIOR tab (tab 1) back by clearing its badge'
+  );
+  assert.ok(
+    !badgeTextObjCalls.some(o => o.tabId === LOCALHOST_TAB_2.id),
+    'run 2 (cancelled) must NOT touch the new tab\'s steady-state badge'
+  );
 });

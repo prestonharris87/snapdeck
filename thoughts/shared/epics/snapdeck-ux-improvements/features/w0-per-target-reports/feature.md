@@ -3,9 +3,9 @@ type: feature
 slug: w0-per-target-reports
 wave: 0
 parent_epic: snapdeck-ux-improvements
-status: released
+status: in-progress
 created_at: 2026-06-18T00:00:00Z
-last_run_id: run-20260619-034752-73507
+last_run_id: run-20260619-161653-52371
 depends_on: []
 frontend_lane: N/A
 visual_references: []
@@ -272,3 +272,4 @@ Domains an architect explicitly decided needed no work for this feature. The sen
 
 2026-06-19T03:49:51Z — orchestrator: status: 'planned' -> 'in-progress' (started via /mat_implement_feature (BOSS-mode))
 2026-06-19T15:01:25Z — BOSS: status: 'in-progress' -> 'released' (PR #1) (Wave 0 released via PR #1 (merge 5526403); BOSS-coordinated wave landing; node --test 56/56)
+2026-06-19T16:17:45Z — orchestrator: status: 'released' -> 'in-progress' [REOPENED for STORY-fe-003] (re-opened to ship STORY-fe-003 (storage.session emission) via /mat_implement_feature [BOSS-mode])

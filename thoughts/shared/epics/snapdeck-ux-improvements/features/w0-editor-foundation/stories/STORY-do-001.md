@@ -182,3 +182,19 @@ diff assertion as the gate. Spoofing/Tampering/Repudiation/DoS: N/A for a load-o
 `localhost`/`127.0.0.1` matches, and zero permission/host/`web_accessible_resources`/`externally_connectable`
 delta are already locked by the story's existing "exactly one added array element" diff gate (devops-validator
 auto-rejects any unrelated manifest change). No new AC, no STORY-sec.
+
+## History
+
+2026-06-18T00:00:00Z — implemented (devops-engineer): inserted `"content/editor-model.js"` at index 2 in
+`content_scripts[1].js` (document_idle entry), immediately before `"content/editor.js"` at index 3.
+JSON validity confirmed (`node -e "JSON.parse(…)"`). Diff: exactly one added array element, no other
+manifest change. Note: `editor-model.js` not yet on disk (fe-005 dependency in flight); Chrome path
+resolution validated once fe-005 lands.
+
+## Engineer Notes
+
+- **Before:** `js: ["lib/konva.min.js", "content/bridge.js", "content/editor.js"]`
+- **After:** `js: ["lib/konva.min.js", "content/bridge.js", "content/editor-model.js", "content/editor.js"]`
+- Changed file: `extension/manifest.json` only (atomic-pathspec commit).
+- `editor-model.js` file itself is owned by fe-005 (frontend-engineer); this story only registers the path.
+- No new permissions, host_permissions, web_accessible_resources, commands, or content_scripts entries added.

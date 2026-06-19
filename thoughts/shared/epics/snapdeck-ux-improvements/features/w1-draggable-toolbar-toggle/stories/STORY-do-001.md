@@ -7,7 +7,7 @@ parent_epic: snapdeck-ux-improvements
 parent_feature: w1-draggable-toolbar-toggle
 assignee: devops-engineer
 author_architect: devops-architect
-status: pending
+status: approved
 created_at: 2026-06-19T15:40:00Z
 last_run_id: run-20260619-042600-10898
 defects: []
@@ -163,9 +163,15 @@ node --test extension/*.test.mjs
 Assertion shape (mockable with `fs`): read `manifest.json`, find the `document_idle`
 content-script entry, assert its `js` contains `content/editor-chrome.js`, assert
 `index(editor-model) < index(editor-chrome) < index(editor)`, and assert each `js` path resolves
-to an existing file under `extension/`. No network, no browser — pure file I/O. (The
-feature-distinct `*.test.mjs` is authored under FE/test ownership per scope.md § Test convention;
-this story contributes the manifest-shape assertions to it, not a second suite.)
+to an existing file under `extension/`. No network, no browser — pure file I/O.
+
+> **Ownership (resolved at arbitration — see Revisions / contrarian Finding 1):** this
+> manifest load-order + path-exists assertion is **owned by and lives in STORY-fe-001's
+> `extension/editor.chrome.test.mjs`** (FE owns that test file). This story does **NOT**
+> author or edit that file — the devops-engineer **references** the guard by running
+> `node --test extension/*.test.mjs` as the validate step below. This keeps the
+> manifest edit (`extension/manifest.json`, the only `files_modified` entry) free of any
+> undeclared cross-domain FE-test edit the devops-validator would reject.
 
 ## Observability / API surface
 
@@ -235,3 +241,24 @@ this story reference it rather than "contribute" to a file it doesn't declare.
 Alternatively, declare `extension/editor.chrome.test.mjs` in this story's
 `files_modified` so the devops-validator expects the edit. Pick one explicitly — do
 not leave the guard's ownership implicit.
+
+## Revisions
+
+### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)
+
+**CONCERN resolved (Finding 1) — guard owner = STORY-fe-001; this story references,
+does not edit.** Per team-lead arbitration direction, the manifest load-order +
+path-exists regression assertion is owned by and authored in **STORY-fe-001's**
+`extension/editor.chrome.test.mjs` (FE owns that file). This story's only
+`files_modified` stays **`extension/manifest.json`** (one added `js`-array element);
+the devops-engineer **must NOT** edit the FE test file. The devops side **references**
+the guard by running `node --test extension/*.test.mjs` as a validate step — so the
+load-order net exists and runs, with no undeclared cross-domain edit for the
+devops-validator to reject. Reconciled the `## Unit tests` wording from "this story
+contributes the manifest-shape assertions to it" → "references the FE-owned guard."
+
+**Ratified — `diff_estimate: mechanical` is correct.** One manifest `js`-array element
+inserted between `editor-model.js` and `editor.js`, matching the released w0
+STORY-do-001 precedent (identical one-element registration of `editor-model.js`). No
+permission / `host_permissions` / `web_accessible_resources` / `commands` delta. No
+change. Status `pending → approved`.

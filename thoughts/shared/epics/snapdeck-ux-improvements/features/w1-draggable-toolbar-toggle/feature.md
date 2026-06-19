@@ -105,7 +105,9 @@ component-library UI; `frontend_lane: N/A`, `skip_ui_designer: true` — no mock
       cleared so no resize handles float over the hidden layer; it is restored on
       show.
 - [ ] When hidden, the **raw captured screenshot (`bgLayer`) is visible with zero
-      annotations drawn over it**.
+      annotations drawn over it** — the synthetic cursor overlay (`cursorLayer`) is
+      hidden alongside `annLayer`/`selectLayer` so the inspected capture is truly raw,
+      and all three overlay layers are restored on show.
 - [ ] The toggle is **non-destructive**: toggling off then on restores all
       annotations **unchanged** — it never mutates `model`, never destroys/recreates
       nodes, only flips layer visibility.
@@ -161,6 +163,13 @@ the current viewport) and the editor re-opened, the toolbar is **clamped back in
 view** (its on-screen rect is fully within the viewport), so a stale off-screen
 position never strands the toolbar.
 
+> _Implementation note (browser-tester): apply-on-open reads `chrome.storage.local`
+> **asynchronously** (the toolbar paints at its default centered position for one
+> frame, then jumps to the stored position inside the storage `get` callback). The
+> assertion on the computed `left/top` MUST **await the async storage read settling**
+> (poll/`waitFor` the repositioned style), not read the synchronous post-append frame
+> — otherwise it reads the default-center value and flakes._
+
 ### Test: visibility toggle hides annotations + selection chrome non-destructively, with no undo impact
 
 **Given** the editor is open with two annotations drawn and one of them selected
@@ -169,14 +178,31 @@ the current undo-history depth is recorded
 **When** the dev clicks the visibility toggle once
 **Then** `annLayer.visible()` is `false` and the layer renders nothing — the raw
 captured screenshot (`bgLayer`) is visible with zero annotations drawn over it —
-**and** the selection chrome is hidden too (no `Konva.Transformer` handles float
-over the hidden layer)
+**and** the selection chrome is hidden too (`selectLayer.visible()` is `false`, no
+`Konva.Transformer` handles float over the hidden layer) **and** the synthetic
+cursor overlay is hidden too (`cursorLayer.visible()` is `false`) so the inspected
+capture is truly raw (only `bgLayer` paints)
 **When** the dev clicks the visibility toggle a second time
-**Then** `annLayer.visible()` is `true` and **all** annotations are restored
+**Then** all three overlay layers are visible again (`annLayer`/`selectLayer`/
+`cursorLayer` `.visible()` are `true`) and **all** annotations are restored
 **unchanged** (same `model` items, same node geometry — nothing destroyed/recreated),
 **and** the undo-history depth is **identical** to the pre-toggle value (the toggle
 committed no `snapshot()`), so an immediate Undo affects the last real edit, not the
 toggle.
+
+### Test: Done while annotations are hidden still saves a PNG WITH the annotations (export guard)
+
+**Given** the editor is open with two annotations drawn and the dev has clicked the
+visibility toggle so the annotation layer is currently **hidden**
+**When** the dev clicks **✓ Done**
+**Then** the saved/annotated screenshot raster (`stage.toDataURL`) **includes the
+annotations** — the export guard restores `annLayer`/`selectLayer`/`cursorLayer`
+visibility before rasterizing, so a Done-while-hidden produces the same annotated PNG
+as a Done-while-shown — **and** the lossless `model` payload and the lossy
+`annotations` projection are byte-identical regardless of the toggle state at Done
+time (the guard only flips `layer.visible()`; it never touches `model`,
+`projectAnnotations`, `serializeModel`, or the resolve payload shape). The cancel/✕
+path returns before any rasterize, so the guard is needed on the Done path only.
 
 ### Test: pointer isolation — grab handle and toggle never leak into the Konva stage
 

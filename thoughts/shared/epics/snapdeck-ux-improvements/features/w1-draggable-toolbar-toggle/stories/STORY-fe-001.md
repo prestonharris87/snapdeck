@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: []
 greenfield: true
 created_at: 2026-06-19T15:40:00Z
@@ -109,6 +109,13 @@ do not rename.
 - [ ] `node --test extension/editor.chrome.test.mjs` passes; the cumulative
       `node --test extension/*.test.mjs` run still passes (no filename collision
       with the existing `editor.model.test.mjs` / `background.*.test.mjs`).
+- [ ] **Manifest load-order guard** (added at arbitration — see Revisions): the test
+      file reads `extension/manifest.json` and asserts the `document_idle`
+      content-script `js` array contains `content/editor-chrome.js` with
+      `index(editor-model) < index(editor-chrome) < index(editor)`, and that every
+      registered `js` path resolves to an existing file under `extension/`. Pure `fs`
+      read **inside the test file only** — the `editor-chrome.js` module under test
+      stays chrome/window/document/Konva-free.
 
 ## Motion contract
 
@@ -131,6 +138,7 @@ run does not collide with siblings.
 - `extension/editor.chrome.test.mjs` — `parseStoredPos guards stored values` — valid object ⇒ `{left,top}`; null / non-object / non-finite ⇒ `null`, never throws.
 - `extension/editor.chrome.test.mjs` — `nextVisibility flips boolean` — `true→false`, `false→true`.
 - `extension/editor.chrome.test.mjs` — `layerVisibility derives both flags (selectVisible tracks annVisible)` — `true` ⇒ both true; `false` ⇒ both false.
+- `extension/editor.chrome.test.mjs` — `manifest registers editor-chrome.js in correct load order` — reads `extension/manifest.json` via `fs`, finds the `document_idle` content-script entry, asserts its `js` array contains `content/editor-chrome.js` with `index(editor-model) < index(editor-chrome) < index(editor)`, and asserts every `js` path resolves to a file on disk under `extension/`. No network, no browser — pure file I/O in the test file (the module under test stays chrome/window-free). _[added at arbitration; owns the load-order regression net flagged by contrarian do-001 Finding 1 / fe-001 Finding 1.]_
 
 ## Dependencies
 
@@ -160,3 +168,22 @@ owned by neither story as written. See STORY-do-001 → Contrarian Findings → 
 manifest-order + path-exists assertions to **this story's** test list (FE owns the
 file), and have do-001 reference rather than "contribute to" it. Decide explicitly;
 do not leave it implicit.
+
+## Revisions
+
+### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)
+
+**CONCERN resolved — manifest load-order regression guard assigned to this story (FE
+owns the test file).** Per team-lead arbitration direction and the contrarian
+recommendation (do-001 Finding 1 / fe-001 Finding 1): the
+`index(editor-model) < index(editor-chrome) < index(editor)` + path-exists assertion
+is **owned here** because FE authors and owns `extension/editor.chrome.test.mjs`.
+Added: (1) a `## How we validate` checklist item, and (2) a `## Unit tests` case
+(`manifest registers editor-chrome.js in correct load order`). The assertion is a
+pure `fs` read of `extension/manifest.json` **inside the test file** — it does NOT
+add `chrome`/`window`/`document`/`Konva` to the `editor-chrome.js` module, which
+stays side-effect-free and node-importable (the story's core constraint is intact).
+STORY-do-001 now **references** this guard (it runs `node --test extension/*.test.mjs`
+as a validate step) rather than "contributing to" a file it doesn't own/declare —
+closing the no-owner gap without an undeclared cross-domain edit by the
+devops-engineer. Status `pending → approved`.

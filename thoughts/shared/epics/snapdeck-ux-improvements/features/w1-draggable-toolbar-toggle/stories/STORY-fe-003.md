@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: [STORY-do-001, STORY-fe-002]
 greenfield: false
 diff_estimate: substantive
@@ -70,8 +70,17 @@ through a new `bar.onToggleVisibility` callback and consumes the pure
   `annShown = __snapdeckEditorChrome.nextVisibility(annShown)` →
   `var v = __snapdeckEditorChrome.layerVisibility(annShown)` →
   `annLayer.visible(v.annVisible); selectLayer.visible(v.selectVisible);
-  annLayer.batchDraw(); selectLayer.batchDraw(); bar.setVisibility(annShown);`
+  cursorLayer.visible(v.annVisible);
+  annLayer.batchDraw(); selectLayer.batchDraw(); cursorLayer.batchDraw();
+  bar.setVisibility(annShown);`
   — **no `snapshot()`, no `model` mutation, no `render()`**.
+  - **`cursorLayer` tracks `annVisible`** (PO arbitration decision — see Revisions):
+    hide the synthetic cursor overlay (`cursorLayer`, `editor.js:48`) alongside
+    `annLayer`/`selectLayer` so "inspect the raw screenshot" yields a **truly raw**
+    capture (only `bgLayer` paints), not a capture with a stray static cursor glyph
+    over it. Reuse the existing `v.annVisible` flag — **no `editor-chrome.js`
+    contract change** (`layerVisibility`'s return shape is unchanged; the cursor
+    visibility is just the already-derived `annVisible` applied to a third layer).
 
 ## Existing behavior baseline
 
@@ -125,12 +134,16 @@ through a new `bar.onToggleVisibility` callback and consumes the pure
   (authored by STORY-fe-001, registered by STORY-do-001). Do NOT inline the
   visibility-state logic.
 - **Export guard (required):** in `finish()`'s non-cancel branch, before
-  `stage.toDataURL` (`editor.js:301`), set `annLayer.visible(true)` (and
-  `selectLayer.visible(true)` for symmetry — the transformer is already detached
-  by the `selectedId = null; render()` at `:300`). This ensures a user who clicks
-  **Done while annotations are hidden** still saves a screenshot WITH annotations.
-  This guard ONLY sets `layer.visible(true)` — it does not touch `model`,
-  `projectAnnotations`, `serializeModel`, or the resolve payload shape.
+  `stage.toDataURL` (`editor.js:301`), set `annLayer.visible(true)`,
+  `selectLayer.visible(true)`, **and `cursorLayer.visible(true)`** (the transformer
+  is already detached by the `selectedId = null; render()` at `:300`). Restoring all
+  three overlay layers ensures a user who clicks **Done while annotations are hidden**
+  still saves a screenshot **byte-identical to the never-toggled path** — including
+  the synthetic cursor that the released w0 `finish()` always rasterized (since the
+  toggle now also hides `cursorLayer`, the guard must restore it too, or a
+  Done-while-hidden export would drop the cursor — a regression). This guard ONLY
+  sets `layer.visible(true)` — it does not touch `model`, `projectAnnotations`,
+  `serializeModel`, or the resolve payload shape.
 - **Do NOT disable drawing tools while hidden** — out of scope. The toggle only
   flips layer visibility; a new annotation drawn while hidden renders into the
   hidden layer and appears on re-show (acceptable, and the export guard keeps Done
@@ -148,6 +161,9 @@ through a new `bar.onToggleVisibility` callback and consumes the pure
 - [ ] The selection chrome is also hidden — no `Konva.Transformer` resize handles
       float over the hidden layer (`selectLayer.visible() === false`); it is
       restored on show.
+- [ ] The synthetic cursor overlay is also hidden (`cursorLayer.visible() === false`)
+      so the inspected capture is **truly raw** (only `bgLayer` paints); it is
+      restored on show.
 - [ ] Clicking again restores **all** annotations unchanged (same `model` items,
       same node geometry — nothing destroyed/recreated).
 - [ ] Toggling does NOT add an undo/redo step — `snapshot()` is not called; undo
@@ -155,9 +171,10 @@ through a new `bar.onToggleVisibility` callback and consumes the pure
 - [ ] The toggle state is not persisted — a fresh `openEditor()` starts with
       annotations shown.
 - [ ] **Export guard:** with annotations hidden, clicking **Done** still produces
-      an annotated PNG that includes the annotations (the layer is restored to
-      visible before `toDataURL`); the lossless `model` payload is unchanged either
-      way.
+      an annotated PNG that includes the annotations (all three overlay layers —
+      `annLayer`/`selectLayer`/`cursorLayer` — restored to visible before
+      `toDataURL`, so the export is byte-identical to the never-toggled path); the
+      lossless `model` payload is unchanged either way.
 - [ ] Clicking the toggle never starts an annotation and never changes the
       current selection; no regression to existing draw/select/transform/undo/redo.
 
@@ -276,3 +293,42 @@ footgun knowingly, not as an unflagged assumption. No story change required.
 > non-regressive to released w0 `finish()`. The `annotated` gate at `editor.js:310`
 > (`losslessModel.items.length ? annotated : null`) is untouched. Confirmed
 > correct.
+
+## Revisions
+
+### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)
+
+**DECISION (Finding 1) — toggle ALSO hides `cursorLayer` for a truly raw view
+(scope INTENT, not creep).** The feature's locked value prop is "toggle annotations
+off to inspect the **raw screenshot** underneath." scope.md enumerated hiding
+`annLayer` + `selectLayer`, but that 2-layer enumeration predates the contrarian's
+discovery that the editor stacks **four** Konva layers — the synthetic `cursorLayer`
+glyph (`editor.js:48`, `listening:false`) also paints over the capture and was simply
+not in the scope author's mental model ("everyone pictured two layers; there are
+four"). Hiding `cursorLayer` alongside the others **fulfills the scope's intent**
+(truly-raw inspection) rather than expanding it. Wired minimally: the toggle handler
+applies the **existing** `v.annVisible` flag to `cursorLayer` (no `editor-chrome.js`
+contract/test change), and the `finish()` export guard restores all three overlay
+layers before `toDataURL` so a Done-while-hidden export stays **byte-identical** to
+the never-toggled path (released w0 `finish()` always rasterized the cursor —
+restoring it prevents a regression). feature.md AC + E2E (toggle test + new
+export-guard test) updated to match.
+
+**INFO disposition (Finding 2) — draw/undo-while-hidden footgun ACCEPTED as conscious
+out-of-scope.** Disabling drawing tools while annotations are hidden is a different
+feature; the story already calls it out of scope. Confirmed accept: a new annotation
+drawn while hidden renders into the hidden layer and accrues a `snapshot()`/undo step,
+surfacing on re-show — logically consistent (visibility is orthogonal to
+model/history), and the export guard keeps Done correct. No story change. Logged as a
+deferred, non-blocking usability follow-up (a future revise could gate the draw
+handlers on `annShown` if it proves confusing in practice).
+
+**INFO note (cross-cutting) — `buildToolbar()` is the cross-feature serialization seam
+with `w1-text-box-autofit`.** This story adds the toggle button + `onToggleVisibility`/
+`setVisibility` inside `buildToolbar()` (same body the text-box feature extends); the
+`finish()` export-guard edit is conflict-free (text-box doesn't touch `finish()`). New
+`bar` fields don't name-collide. BOSS serializes implement — surfaced to team-lead for
+STORIES_LOCKED so the second-to-merge engineer rebases on the first's `buildToolbar()`
+additions deliberately.
+
+Status `pending → approved`.

@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: backend-engineer
 author_architect: backend-architect
 effort: 1
-status: pending
+status: approved
 sentinel: true
 depends_on: []
 diff_estimate: mechanical
@@ -67,6 +67,22 @@ This determination matches `scope.md` ("Toolbar position lives in
 scope, and is the same data-flow direction noted in backend lessons: the content
 script owns this state; the service worker does not consume it.
 
+## How we validate it was done correctly
+
+- [ ] **Empty backend diff:** this feature's diff contains **no** change to
+      `extension/background.js` (no new message type, no `chrome.storage.local`
+      handler, no IndexedDB `idb()`/`getReport`/`setReport`/`addScreenshot` touch)
+      and **no** change to the Python controller (`controller/snapdeck_controller/
+      reports.py`, `server.py`).
+- [ ] **`ANNOTATE` resolve contract frozen:** the editor→SW `resp` payload shape
+      (`background.js:213-228`, incl. `model: resp.model ?? null`), the
+      screenshot-record push literal (`:215-226`), and the `/report/save` field
+      whitelist (`:248-252`) are byte-unchanged.
+- [ ] **Toolbar position never rides a backend surface:** confirm (via the FE story
+      diff) toolbar position is written/read ONLY through content-script
+      `chrome.storage.local` — it never appears in any `background.js` message, the
+      IndexedDB report store, or the `/report/save` payload.
+
 ## Peer coordination
 
 Sent a confirmation message to **frontend-architect** (1 outgoing peer message,
@@ -83,3 +99,17 @@ none
 ## History
 
 - 2026-06-19 — created by backend-architect (sentinel, effort=1, depends on none)
+
+## Revisions
+
+### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)
+
+**Added a `## How we validate it was done correctly` checklist (3 `- [ ]` items).**
+The sentinel shipped with no validate checklist; finalize requires ≥1 checkable
+`- [ ]` item per story (recurring snapdeck sentinel gap — same fix applied on the w0
+sibling features). The items are diff-checkable empty-backend / frozen-`ANNOTATE` /
+position-never-on-a-backend-surface assertions the backend-validator can confirm. The
+sentinel verdict (no backend work) is sound and unchanged — confirmed against
+scope.md (toolbar position lives in `chrome.storage.local`, NOT the report store /
+`model`) and the FE story set (no `background.js` in any FE `files_modified`). Status
+`pending → approved`.

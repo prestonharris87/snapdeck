@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: database-engineer
 author_architect: database-architect
 effort: 1
-status: pending
+status: approved
 sentinel: true
 depends_on: []
 diff_estimate: none
@@ -110,3 +110,15 @@ chrome.storage.local").
 ## History
 
 - 2026-06-19 — created by database-architect (effort=1, sentinel, depends on none)
+
+## Revisions
+
+### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)
+
+**Ratified, no content change.** Sentinel verdict (no DB work) is sound: Snapdeck has
+no server-side DB / migration mechanism, and toolbar position lives in
+`chrome.storage.local` (FE-owned), not the IndexedDB `report` store or the frozen
+`model` envelope — consistent with scope.md § Out of scope and feature.md. Frontmatter
+is template-conformant (`type/domain/parent_feature/parent_epic/sentinel`) and the
+`## How we validate` checklist already carries 4 `- [ ]` items, so no sentinel-gap fix
+was needed here (unlike be-001). Status `pending → approved`.

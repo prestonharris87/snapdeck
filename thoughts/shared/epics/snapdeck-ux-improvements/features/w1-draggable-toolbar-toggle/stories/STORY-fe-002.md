@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 3
-status: pending
+status: approved
 depends_on: [STORY-do-001]
 greenfield: false
 diff_estimate: substantive
@@ -259,3 +259,28 @@ isn't timing-flaky. No story change required.
 > pointer events bubble to `root`/`document`, never *across* into the Konva stage
 > container. The `stopPropagation`/pointer-capture is harmless belt-and-suspenders,
 > not the load-bearing isolation. Confirmed correct.
+
+## Revisions
+
+### 2026-06-19 — product-owner (arbitrate, run-20260619-042600-10898)
+
+**INFO disposition (Finding 1) — async apply-on-open flicker ACCEPTED as-is; E2E
+await requirement wired.** The per-open one-frame center→stored "jump" is accepted
+for this developer tool exactly as the story states (no story change; the
+`pre-hide-until-positioned` mitigation stays the engineer's optional judgment call,
+not an AC). The *second* half of the finding — the dependent persistence E2E must
+**await the async `chrome.storage.local` read settling** before asserting computed
+`left/top`, or it flakes on the synchronous default-center frame — is now wired into
+**feature.md § "Test: toolbar position persists and is restored (clamped)"** as an
+explicit implementation note to the browser-tester. No change to this story.
+
+**INFO note (cross-cutting) — `buildToolbar()` is the real cross-feature
+serialization seam with `w1-text-box-autofit`, not `finish()`.** Both features add
+toolbar buttons + extend the `bar` API object inside the **same `buildToolbar()`
+body** (`editor.js:333-365`); the new `bar` fields do **not** name-collide
+(`grip`/`onToggleVisibility`/`setVisibility` vs. the text-box additions). This is a
+textual-region overlap resolved by **BOSS's implement serialization** — surfaced to
+the team-lead for BOSS so the second-to-merge engineer deliberately rebases on the
+first's `buildToolbar()` additions. No story change; flagged at STORIES_LOCKED.
+
+Status `pending → approved`.

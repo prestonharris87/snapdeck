@@ -245,6 +245,7 @@ animations/transitions, so there is no reduced-motion-affected motion. Consisten
 - 2026-06-19T17:24:51Z — orchestrator — validate validated; honesty passed (BOSS-mode implement)
 - 2026-06-19 — created by frontend-architect (effort=3, depends on STORY-fe-001)
 - 2026-06-19T00:00:00Z — implemented (commit: 3cab947)
+- 2026-06-19T20:10:00Z — DEFECT-001 fix applied (commit: 6a03abb) — bounded fit loop: binary search + TEXT_FIT_SAMPLE=500
 
 ## Engineer Notes
 
@@ -263,6 +264,16 @@ Implemented in the same commit as fe-001 and fe-003 (all three stories modify `e
   innerH < TEXT_AUTOFIT_MIN`, short-circuit directly to `TEXT_AUTOFIT_MIN` — skips the measurement
   loop entirely, relying on Group `clip` to contain overflow. This closes the ~12–18px residual
   worst-case-slow band on crafted re-opened models.
+- **DEFECT-001 fix 2 (commit 6a03abb) — bounded fit loop for large text:** bt smoke found that a
+  20K-char text item (capped to RENDER_TEXT_CAP=10K) in a normal-size box ran 43 linear iterations ×
+  10K-char canvas measurement ≈ 20+ second event-loop block. Two changes in `fitTextFontSize()`:
+  (1) **Binary search** replaces the linear decrement — O(log(cap−min)) ≈ 6 iterations vs. 42.
+  (2) **`TEXT_FIT_SAMPLE = 500`** constant: if `safeText.length > TEXT_FIT_SAMPLE`, the textNode
+  is temporarily set to `safeText.slice(0, TEXT_FIT_SAMPLE)` for each Konva measurement call, then
+  restored to full `safeText` for display. Per-iteration canvas measurement is now bounded to 500
+  chars regardless of item text length. Combined worst-case: ≈6 × (500-char measurement) per item.
+  bt re-smoke (2026-06-19T20:05Z): no hang, render completed in <2s total (includes Chrome launch),
+  0 console errors, 20K-char text displayed and clipped inside Group.
 - **Tight draggable gate** (`tool === "select" && selectedId === item.id`) set at group creation
   time — per the cross-story reconciliation, fe-002 owns the flag physically; fe-003 owns the rationale
   and transformer attach.

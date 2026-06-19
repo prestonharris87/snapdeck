@@ -225,6 +225,7 @@ feature level. No cross-domain dependency; see feature.md §No-work domains.)
 - 2026-06-19T17:24:51Z — orchestrator — validate validated; honesty passed (BOSS-mode implement)
 - 2026-06-19 — created by frontend-architect (effort=2, depends on STORY-fe-001, STORY-fe-002)
 - 2026-06-19T00:00:00Z — implemented (commit: 3cab947)
+- 2026-06-19T20:10:00Z — DEFECT-001 fix applied (commit: 6a03abb) — dblclick Option A + bounded fit loop; bt re-smoke 7/7 scenario 4 pass
 
 ## Engineer Notes
 
@@ -270,7 +271,14 @@ documented in fe-003 revisions. The text pattern is the correct contract `w2-rec
   (no state change, no re-render needed). Both clicks of the dblclick then hit the same Group object
   → Konva fires `pointerdblclick` → `editText` opens. UX: single-click selects (renders once on
   first selection), subsequent dblclick on the selected item opens the editor. Matches the AC.
-- bt re-verification of scenario 4 requested after commit 1fcf947.
+- **DEFECT-001 combined commit (`6a03abb`):** Fix 1 (dblclick, Option A from commit 1fcf947) and
+  Fix 2 (bounded fit loop — binary search + TEXT_FIT_SAMPLE=500, owned by fe-002) shipped together.
+  bt re-smoke 2026-06-19T20:05Z: **7/7 scenario 4 sub-steps pass** — transformer handles visible
+  after single-click (no textarea), textarea open and pre-filled after dblclick, geometry preserved
+  after edit+Enter commit, 0 console errors. Screenshots: `bt-s4-1-single-click-selected.png`,
+  `bt-s4-2-dblclick-textarea-open.png`, `bt-s4-3-after-edit-committed.png`.
+  Large-text scenario also cleared: no hang, render <2s, 0 console errors.
+  **Smoke evidence for gate-2**: bt → fe conversation, 2026-06-19T20:05Z.
 
 ## Contrarian Findings
 

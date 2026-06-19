@@ -3,7 +3,7 @@ type: feature
 slug: w0-keyboard-shortcuts
 wave: 0
 parent_epic: snapdeck-ux-improvements
-status: planned
+status: in-progress
 created_at: 2026-06-18T00:00:00Z
 last_run_id: run-20260619-023636-42973
 depends_on: []
@@ -218,3 +218,7 @@ Domains an architect explicitly decided needed no work for this feature. The sen
 - **frontend** — **No frontend changes required for this feature.**
 - **database** — **No database changes required for this feature.**
 - **devops** — >-
+
+## History
+
+2026-06-19T03:20:54Z — orchestrator: status: 'planned' -> 'in-progress' (started via /mat_implement_feature (BOSS-mode))

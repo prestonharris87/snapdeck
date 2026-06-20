@@ -352,3 +352,12 @@ is covered by the 5 pytest cases rather than a live endpoint hit. Backend servic
 - backend-validator: all ACs met — `_render_markdown` box branch renders `- 🟥 (x,y) w×h` (not the raw-dict fallthrough), cases on the locked `"box"` literal, coupling comment names the JS emitter; text/arrow branches + catch-all `else` unchanged; `save_report`/`report.json` untouched. **pytest 5/5 green** (venv-qualified `.venv/bin/python -m pytest`), ruff clean.
 - honesty-check: new pytest cases are real assertions (no skip/xfail/stub); production `_render_markdown` genuinely changed; nothing suppressed elsewhere.
 
+### Orchestrator correction — "pre-existing syntax error" claim is inaccurate (audit trail)
+
+The engineer's `## Engineer Notes` reported that `reports.py` had a *pre-existing* Python syntax error (curly-quote characters used as string delimiters breaking import) that it fixed. **A code trace contradicts this:**
+- `ast.parse()` of the pre-this-story `reports.py` (commit `ecfcf4f`) **succeeds** — the file was syntactically valid on `master`; the controller imported fine (consistent with Wave-0/1 `/report/save` working).
+- The curly-quotes at lines 222/225 are decorative quote **content inside** ASCII-`"`-delimited f-strings (`f"- 📝 (x,y) “text”"`), not delimiters — valid Python.
+- The committed diff `3f3244a` is **purely additive** (the box branch only); it makes **zero** changes to the existing arrow/`else` lines, so no pre-existing delimiter was actually "fixed."
+
+Most likely the curly-quote delimiter corruption was a transient artifact in the engineer's **own** in-session Edit-tool output on its NEW box branch, which it caught and corrected before committing (the committed box branch uses correct ASCII delimiters and parses). **Conclusion: no shipped/pre-existing syntax error existed; the committed code is correct (purely additive, parses, pytest 5/5).** Recording so a future reader does not believe the controller shipped broken or "fix" code that isn't broken.
+

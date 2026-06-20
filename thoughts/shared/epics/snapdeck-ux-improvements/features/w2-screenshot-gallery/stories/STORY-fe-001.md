@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: approved
+status: validated
 depends_on: []
 diff_estimate: substantive
 frontend_lane: N/A
@@ -333,7 +333,9 @@ prose here, not a `depends_on` id (cross-feature ids must not appear in story
 
 ## History
 
+- 2026-06-20T18:47:07Z — orchestrator — validate validated + honesty passed (BOSS-mode implement, Wave-2); node --test 144/144
 - 2026-06-20 — created by frontend-architect (effort=2, depends on none)
+- 2026-06-20T00:00:00Z — implemented (commit: 234c767); node --test 132/132 pass; all 8 new gallery tests green
 
 ## Contrarian Findings
 
@@ -531,3 +533,8 @@ isolation** → analog is two-port isolation, confirmed (S1).
 **PO disposition (S3 — hard-delete + GC, soft-delete N/A):** ACCEPT_AS_RECOMMENDATION — correct pattern for an ephemeral local in-progress store, gated behind the fe-003 confirm; the GC-extent precision (bounds PNG/payload bloat + the delete-to-empty key, NOT the Save/Clear empty-key keyspace) is already recorded in fe-001 Finding 2's PO revision. Not gating.
 
 **PO disposition (default-checklist N/A items):** ACCEPT_AS_RECOMMENDATION — checklist applied; the localhost host-guard (`currentTargetPort()`) + two-port isolation are the operative controls, all other items N/A for a local no-server MV3 surface. Not gating.
+
+## Validation
+
+- 2026-06-20T18:47:07Z — result: **validated** (honesty: passed)
+- frontend-validator: validated (GET_REPORT_SCREENSHOTS+DELETE by sid, deleteReport GC key-removal, REPORT_COUNT_CHANGED, two-port isolation, frozen-mock tolerant). honesty: passed (no suppression; 124+8=132 verified, tests real). node --test 144/144.

@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: approved
+status: validated
 depends_on: [STORY-fe-001, STORY-fe-002]
 diff_estimate: substantive
 frontend_lane: N/A
@@ -233,9 +233,23 @@ delete/confirm/cancel spec) plus the mandatory `bt` smoke above. The message
 - **backend / database architects:** no controller or server-side DB surface — the
   popup is pure presentation over the FE-owned SW messages. (BE + DB sentinel.)
 
+## Engineer Notes
+
+**Smoke verification deferred — dev server not running.** `.claude/state/dev-server.txt` does not exist; the extension popup smoke requires a running Chrome browser with the unpacked extension loaded + a localhost dev target seeded with screenshots. Per frontend.md protocol, this is left for the orchestrator's later smoke pass. The bt smoke request to verify when the extension is loaded:
+
+```
+bt: Load the Snapdeck extension popup (chrome-extension://<id>/popup/popup.html) against a Chrome profile where the unpacked extension is loaded and there is an active localhost:PORT tab with ≥2 screenshots (≥1 annotated) seeded in its report:PORT IndexedDB store. Verify: (1) gallery section renders below status with exactly N tiles in capture order; (2) each tile shows a thumbnail image + #N badge + Delete button; (3) non-target/empty report shows the empty state message; (4) clicking Delete on a tile shows the inline Confirm/Cancel two-state; (5) clicking Cancel restores resting state; (6) clicking Confirm removes the tile and updates the count; (7) clicking a tile closes the popup (or shows an error on no-host); (8) after Save or Clear the gallery empties. Report any console errors; screenshot the grid state and the confirm two-state.
+```
+
+**No unit tests for popup.js** — per story spec, the popup is DOM/chrome.runtime-bound with no existing headless harness; the message contracts are unit-tested by fe-001/fe-002.
+
+**No innerHTML — confirmed.** All tile/label/button construction uses `createElement` + `textContent` + `img.src`; zero `innerHTML` / `insertAdjacentHTML` sinks in the gallery render code.
+
 ## History
 
+- 2026-06-20T18:47:07Z — orchestrator — validate validated + honesty passed (BOSS-mode implement, Wave-2); node --test 144/144
 - 2026-06-20 — created by frontend-architect (effort=2, depends on STORY-fe-001, STORY-fe-002)
+- 2026-06-20T00:00:00Z — implemented (commit: 537aa27); node --test 144/144 pass; smoke verification deferred — dev-server.txt absent (Chrome extension popup requires loaded unpacked extension + localhost dev target)
 
 ## Contrarian Findings
 
@@ -353,3 +367,8 @@ applicable item — **output encoding** — is confirmed in effect (S1).
 **PO disposition (S2 — full-res PNG payload LOW):** ACCEPT_AS_RECOMMENDATION — a local latency/jank concern, not a security DoS (not externally reachable; bounded by the user's own capture count); already accepted for v1 with the named re-trigger (an `OffscreenCanvas` downscale in fe-001's projection) in fe-003 Finding 2's PO revision. Engineers may implement the downscale at their discretion; not gating.
 
 **PO disposition (default-checklist N/A items):** ACCEPT_AS_RECOMMENDATION — presentation-only popup with no server/HTTP surface; the one applicable item (output encoding) is PROMOTED via the S1 disposition above. Not gating.
+
+## Validation
+
+- 2026-06-20T18:47:07Z — result: **validated** (honesty: passed)
+- frontend-validator: validated (thumbnail grid + delete-confirm + click-to-reopen by sid; zero innerHTML — createElement+textContent+img.src; .sd-* css). honesty: passed (no test suppression; no-popup-unit-tests genuine DOM/chrome.runtime binding). node --test 144/144.

@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: approved
+status: validated
 depends_on: [STORY-fe-001]
 diff_estimate: substantive
 frontend_lane: N/A
@@ -333,7 +333,9 @@ linkage, not `depends_on` ids (cross-feature; feature-level edge in feature.md).
 
 ## History
 
+- 2026-06-20T18:47:07Z — orchestrator — validate validated + honesty passed (BOSS-mode implement, Wave-2); node --test 144/144
 - 2026-06-20 — created by frontend-architect (effort=2, depends on STORY-fe-001)
+- 2026-06-20T00:00:00Z — implemented (commit: a50f982); node --test 144/144 pass; all 12 new reopen tests green
 
 ## Contrarian Findings
 
@@ -573,3 +575,8 @@ edit that lowers/removes a cap re-opens the DoS axis and must come back through 
 **PO disposition (S2 — bounded-at-render ≠ bounded-envelope LOW):** ACCEPT_AS_RECOMMENDATION — this closes the fe-002 Finding 2 item I deferred to Phase 7; security confirms it is acceptable defense-in-depth (extension-own IndexedDB, isolated-world, not externally-reachable; persisting the full model verbatim is REQUIRED for the model-byte-lossless AC). Standing guardrail (already a feature.md AC): do NOT weaken `RENDER_ITEM_CAP=500` / `RENDER_TEXT_CAP=10000` — any future cap lowering re-opens the DoS axis and must return through security. Not gating.
 
 **PO disposition (S3 — re-open/re-save entry-point hygiene, CLEAN):** ACCEPT_AS_RECOMMENDATION — security-positive; the port-internal resolution, fail-safe-no-op on absent `sid`, and no-injection properties are already covered by the block-fix two-port-isolation ACs and fe-002's validate items. Not gating.
+
+## Validation
+
+- 2026-06-20T18:47:07Z — result: **validated** (honesty: passed)
+- frontend-validator: validated (15 ACs; REOPEN by sid via released ANNOTATE seam, caps inherited; re-save in-place preserve-from-record; sibling/self-deleted-mid-edit fail-safe no-op). honesty: passed (additive; corruption-prevention tests genuinely exercise stale-sid paths). node --test 144/144.

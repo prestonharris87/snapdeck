@@ -3,7 +3,7 @@ type: feature
 slug: w2-screenshot-gallery
 wave: 2
 parent_epic: snapdeck-ux-improvements
-status: planned
+status: in-progress
 created_at: 2026-06-18T00:00:00Z
 last_run_id: run-20260620-161818-88519
 depends_on: [w0-per-target-reports, w0-editor-foundation]
@@ -392,3 +392,7 @@ Domains an architect explicitly decided needed no work for this feature. The sen
 - **backend** — **No backend (controller) changes are required for this feature.** The screenshot
 - **database** — > **Sentinel story.** No implementation work for the database-engineer. Recorded
 - **devops** — **No DevOps work is required for `w2-screenshot-gallery`.** The popup gallery
+
+## History
+
+2026-06-20T18:32:03Z — orchestrator: status: 'planned' -> 'in-progress' (started via /mat_implement_feature (BOSS-mode, Wave-2 final))

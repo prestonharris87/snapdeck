@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 3
-status: validated
+status: released
 depends_on: [STORY-fe-001]
 created_at: 2026-06-19T15:30:00Z
 last_run_id: run-20260619-150554-36418
@@ -251,6 +251,7 @@ animations/transitions, so there is no reduced-motion-affected motion. Consisten
 - 2026-06-19T00:00:00Z — implemented (commit: 3cab947)
 - 2026-06-19T20:10:00Z — DEFECT-001 fix applied (commit: 6a03abb) — bounded fit loop: binary search + TEXT_FIT_SAMPLE=500 [superseded by r2]
 - 2026-06-19T20:28:00Z — DEFECT-001 r2 fix applied (commit: 37ed252) — drop TEXT_FIT_SAMPLE; min-overflow pre-check + full-text binary search; bt C+D smoke pass
+2026-06-19T22:19:59Z — BOSS: status: 'validated' -> 'released' (Released via Wave-1 PR #2 (8c340a6))
 
 ## Engineer Notes
 

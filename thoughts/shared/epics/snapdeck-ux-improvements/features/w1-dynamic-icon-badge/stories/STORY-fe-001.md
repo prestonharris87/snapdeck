@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: validated
+status: released
 depends_on: []
 created_at: 2026-06-19T00:00:00Z
 last_run_id: run-20260619-150619-36719
@@ -231,6 +231,7 @@ touches no HTTP endpoint, DB write, or page-reachable input.
   line touched). Unit tests in `extension/background.icon-badge.test.mjs`. Cumulative
   `node --test extension/*.test.mjs` 121/121 green.
 2026-06-19T22:12:11Z — frontend-validator: status: 'in-progress' -> 'validated' (validated — frontend-validator + honesty-check passed (commit 6511c41))
+2026-06-19T22:19:58Z — BOSS: status: 'validated' -> 'released' (Released via Wave-1 PR #2 (8c340a6))
 
 ## Engineer Notes
 

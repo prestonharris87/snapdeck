@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 3
-status: validated
+status: released
 depends_on: [STORY-do-001]
 greenfield: false
 diff_estimate: substantive
@@ -239,6 +239,7 @@ Established via peer messaging this run (mirrored to
 
 - 2026-06-19 — created by frontend-architect (effort=3, depends on STORY-do-001; consumes window.__snapdeckEditorChrome)
 - 2026-06-19T00:00:00Z — implemented (commit: 76e97c0) — Manual verification deferred — dev server not running; Phase 5 browser-tester E2E covers drag/persist/restore ACs.
+2026-06-19T22:19:58Z — BOSS: status: 'validated' -> 'released' (Released via Wave-1 PR #2 (8c340a6))
 
 ## Contrarian Findings
 

@@ -338,3 +338,188 @@ store/version change. The `chrome.storage.session` resolution cache is a
 non-versioned, ephemeral browser-local store written and read entirely by
 FE/extension code; the forward-only/soft-delete policy is not engaged because no
 schema is created, altered, or dropped by this feature.
+
+---
+
+## Feature `w2-screenshot-gallery` — NO server-side DB changes (sentinel)
+
+**Decision: sentinel for the server-side database domain.** This feature
+introduces **zero** server-side DB / IndexedDB store / index / version / migration
+/ reference-seed / retention-rule changes. See
+`features/w2-screenshot-gallery/stories/STORY-db-001.md`.
+
+### Rationale
+
+- Snapdeck has **no server-side relational database and no migration framework**
+  (it is a Chrome MV3 extension). The only persistent client-side store is
+  IndexedDB (`snapdeck`/`kv`, key `report:<port>`), and per the ownership
+  correction in § `w0-per-target-reports` above, that IndexedDB store is
+  **frontend/extension domain** — owned by `frontend-architect`, NOT the
+  server-side database-architect. The server-side DB role is therefore a
+  **sentinel** for this feature.
+- The gallery does **index-scoped reads / mutations of the existing
+  `report:<port>` record only**, all through the released
+  `w0-per-target-reports` helpers:
+  - **Fetch** — reads `getReport(port).screenshots[]` in full (a new zero-port-arg
+    `background.js` message returns `{ index, thumbnail-source, light meta }`).
+  - **Re-open + re-save** — re-emits the editor `model` via the released
+    `ANNOTATE {image, model}` seam, then **replaces one `screenshots[]` element
+    in place** via `setReport(port, r)`: `original` unchanged, `model` /
+    `annotated` / `annotations` re-rendered, `console` / `network` / `meta`
+    preserved. Value-level array-element replace — no store/key/shape change.
+  - **Delete** — splices one `screenshots[]` element via `setReport(port, r)`;
+    when a delete empties the report the FE delete story **truly removes the
+    `report:<port>` key** from the existing `kv` store via a new FE-owned
+    `deleteReport(port)` / `idbDelete(key)` helper (the GC home for the per-target
+    LOW-2 forward-flag) — rather than writing an empty `{note, screenshots:[]}`
+    record — so the store does not accumulate empty/stale entries. Removing a *key*
+    from the existing generic `kv` store is an additive value/key-level operation,
+    **not** a store-definition / version change (confirmed with frontend-architect,
+    2026-06-20: no `indexedDB.open("snapdeck", N)` version bump, no new store, no
+    new index).
+- **No `indexedDB.open("snapdeck", N)` version bump** (stays at v1), **no new
+  object store, no new index** (the report is a single `kv` value read in full —
+  never a queried/filtered collection, so no index is warranted), **no
+  record-shape change** (the `{note, screenshots[]}` value contract and the
+  `report:<port>` key are unchanged).
+- **No reference/seed data, no localized strings, no server-side retention rule.**
+  The only retention behavior is the Delete-driven `clearReport(port)` GC, which
+  is a client-side value-level clear on the existing key, owned by the FE story
+  set.
+- The re-open path inherits the released render-boundary guards
+  (`RENDER_ITEM_CAP = 500`, `RENDER_TEXT_CAP = 10000`, text-box clamp /
+  clamped-inset short-circuit) verbatim. The bounded-arbitrary-model concern is a
+  **render-time** resilience property of `editor.js` (FE/security domain), **not**
+  a storage/schema concern — the `model` is read from the extension's own
+  IndexedDB (isolated-world, not page-writable, not network), so there is no
+  DB-side validation/index to add.
+
+### Ownership boundary
+
+- **New `background.js` message handlers** (fetch-report-screenshots,
+  re-open-and-resave by index/id, delete by index/id; each resolves
+  `currentTargetPort()` internally — callers pass index/id only) →
+  `backend-architect` (service-worker domain). These are message-routing +
+  value-level `getReport`/`setReport`/`clearReport` calls, not schema.
+- **Popup gallery UI** (thumbnail grid, delete-confirm, re-open entry) →
+  `frontend-architect` (`extension/popup/*`).
+- **IndexedDB `report` store (`snapdeck`/`kv`, `report:<port>` keying, the
+  `getReport`/`setReport`/`clearReport` helpers, `portOfUrl`/`currentTargetPort`)**
+  → unchanged; owned by released `w0-per-target-reports` (FE/extension domain).
+  Consumed here as read + index-scoped value mutation only.
+- **Editor `model` envelope + render-boundary guards** → unchanged; frozen by
+  released `w0-editor-foundation` (`editor-model.js` / `editor.js`).
+- **`REPORT_COUNT_CHANGED` `chrome.storage.session` tick** → unchanged; consumed
+  as released (`w0-per-target-reports` STORY-fe-003); the badge consumer is
+  `w1-dynamic-icon-badge`.
+
+### Cross-domain confirmation
+
+Sentinel status was coordinated with `frontend-architect` before finalizing (the
+unconditional Phase-5 peer-message floor) and **confirmed by FE on 2026-06-20** —
+the gallery's data layer rides entirely inside the released `report:<port>` keying
+with **no** new object store, no `indexedDB.open("snapdeck", N)` version bump, no
+new index, and no record-key/record-shape change (fetch = read-in-full; re-save =
+in-place array-element replace; delete = splice, with an emptying delete removing
+the `report:<port>` key via the FE-owned `deleteReport(port)` / `idbDelete(key)`
+GC helper — an additive value/key-level op on the existing `kv` store, not a
+store-definition/version change). See
+`features/w2-screenshot-gallery/conversations/0001-database-architect-to-frontend-architect-msg.md`.
+
+### Migration / rollback strategy
+
+N/A — no server-side schema to migrate forward or reverse, and no IndexedDB
+store/version change. The forward-only / soft-delete policy is not engaged for the
+server-side DB domain because no schema is created, altered, or dropped. Note that
+the feature's **user-driven Delete is intentionally destructive** at the
+client-side value level (it removes a single `screenshots[]` element, and clears
+the `report:<port>` key when the report empties) — but this is a
+frontend/extension client-side operation gated behind an explicit in-popup confirm
+step (owned by the FE story set), **not** a server-side schema drop, so the
+server-side `destructive: true` / human-review-Open-Question rule does not apply
+to this DB sentinel. The client-side delete-confirm contract is owned and detailed
+by the FE/BE stories.
+
+---
+
+## Feature `w2-rectangle-tool` — NO data-model changes (sentinel)
+
+**Decision: sentinel.** This feature introduces **zero** server-side DB /
+IndexedDB store / index / version / migration / reference-data / seed changes.
+See `features/w2-rectangle-tool/stories/STORY-db-001.md`.
+
+### Rationale
+
+This feature promotes the released w0 generic `type:"box"` editor primitive into
+a user-facing red-outline rectangle (restyle + relabel + add to the lossy
+projection + render in the controller report). Its four surfaces touch **three
+distinct persistence-adjacent layers — none of which is a database the
+database-architect owns**:
+
+1. **`projectAnnotations` box branch (`editor-model.js:45-63`).** Adding a
+   `box`→`{id, type, x, y, width, height}` entry (with `Math.round`) to the lossy
+   projection is a pure in-memory model→array *projection-shape* change executed
+   in the content script. No store, no index, no schema, no version bump. The
+   companion frozen-test update (`extension/editor.model.test.mjs:88-101`) is a
+   unit-test change, not a data artifact. **FE-owned.**
+
+2. **The rectangle's persistent home is `screenshots[].model`** — the
+   `{type:"box"}` item rides the **opaque structured-clone value** field released
+   by `w0-editor-foundation`. `deserializeModel` passes items through opaquely
+   (`editor-model.js:72-81`); the model/wire `type` literal **stays `"box"`** for
+   round-trip back-compat with already-persisted records. Adding/projecting a
+   value that is already stored opaquely touches **no `kv` object-store
+   definition, no index, and no `indexedDB.open("snapdeck", 1)` version bump**
+   (stays v1) — the same value-vs-schema distinction as `w1-text-box-autofit`.
+   **FE/extension-owned.**
+
+3. **The controller report bundle (`controller/snapdeck_controller/reports.py`).**
+   The projection now reaches the in-repo controller's `save_report`, which writes
+   **flat files on disk** — `out_dir/"report.json"` (line 172) and
+   `out_dir/"report.md"` (line 173). `annotations` are stored **opaquely**
+   (`shot.get("annotations") or []`, line 147) → straight into `report.json` with
+   no type validation. The in-scope `_render_markdown` rectangle branch (~line 227)
+   is **pure rendering** of an already-persisted opaque dict. There is **no SQL,
+   no ORM, no relational/managed DB, and no migration mechanism** behind the
+   controller — it is flat-file output. **BE/Python-owned (backend-architect).**
+
+No new IndexedDB object store, no index, no `report` record-shape change, no
+reference/seed data, no localized strings, no retention rule change, and no
+controller database.
+
+### Ownership boundary
+
+- **`projectAnnotations` box branch + frozen-test update (`editor-model.js`,
+  `editor.model.test.mjs`)** → `frontend-architect` (FE story set); pure
+  model-transform + unit-test change.
+- **`renderBox` restyle + draw-preview restyle + toolbar relabel (`editor.js`)** →
+  `frontend-architect` (FE story set); render/UI only, no persistence.
+- **Editor `model` rectangle item (`{type:"box"}`)** → opaque value on the released
+  `screenshots[].model` structured-clone seam (`w0-editor-foundation`); persisted
+  verbatim by `addScreenshot()` in `background.js` — no storage-helper change.
+- **Controller `report.md` rectangle render (`reports.py` `_render_markdown`)** →
+  `backend-architect` (BE/Python story); flat-file output, opaque `annotations`,
+  no DB.
+- **IndexedDB `report` store (`snapdeck`/`kv`, `report:<port>` keying)** → unchanged;
+  owned by released `w0-per-target-reports` (FE/extension domain).
+- **Editor `model` envelope (`{version:1, items:[…]}`)** → unchanged; frozen by
+  released `w0-editor-foundation` (`editor-model.js`).
+
+### Cross-domain confirmation
+
+Sentinel status was coordinated with **both** `frontend-architect` (the rectangle
+projection + `model` persistence add no IndexedDB store/index/version change —
+value rides the released w0 seam) and `backend-architect` (the controller persists
+to flat `report.json`/`report.md` with opaque `annotations`; the `_render_markdown`
+rectangle branch needs no paired DB story) before finalizing — the unconditional
+Phase-5 peer-message floor. See `features/w2-rectangle-tool/conversations/`.
+
+### Migration / rollback strategy
+
+N/A — no server-side schema to migrate forward or reverse, and no IndexedDB
+store/version change. The rectangle is an opaque value-shape addition on the
+released `model` seam (forward-compatible by construction — the wire `type` stays
+`"box"`, so already-persisted records round-trip unchanged), and the controller
+writes flat files. The forward-only/soft-delete policy is not engaged because no
+schema is created, altered, or dropped by this feature; the value-shape change is
+owned by the FE stories and the flat-file render by the BE story.

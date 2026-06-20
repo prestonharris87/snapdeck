@@ -31,6 +31,15 @@ async function idbSet(key, val) {
     tx.onerror = () => reject(tx.error);
   });
 }
+// mirror idbGet/idbSet — a 'readwrite' delete transaction (used by deleteReport GC).
+async function idbDelete(key) {
+  const db = await idb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("kv", "readwrite").objectStore("kv").delete(key);
+    tx.onsuccess = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
 
 // Per-port storage helpers — keyed report:<port> in the kv store.
 // No IndexedDB version bump: the generic kv store is reused as-is.
@@ -46,6 +55,12 @@ async function setReport(port, r) {
   await idbSet(reportKey(port), r);
 }
 async function clearReport(port) { await setReport(port, EMPTY_REPORT()); }
+// GC: truly remove report:<port> key. Only called by DELETE_SCREENSHOT when the
+// delete empties the report — NOT called by clearReport / SAVE_REPORT / CLEAR_REPORT.
+async function deleteReport(port) {
+  if (port == null) return;
+  await idbDelete(reportKey(port));
+}
 
 // Emit a storage.session tick whenever the report count for a port changes.
 // Optional-chained so it no-ops cleanly when chrome.storage is absent (the
@@ -53,6 +68,22 @@ async function clearReport(port) { await setReport(port, EMPTY_REPORT()); }
 function emitReportCountChanged(port, count) {
   if (port == null) return;                       // null-port guard (load-bearing at site 3)
   chrome.storage?.session?.set?.({ reportCountChanged: { port, count, ts: Date.now() } });
+}
+
+// --- stable-identity helpers (w2-screenshot-gallery) ------------------------
+// Synthesize a stable per-screenshot identity from fields that are PRESERVED
+// across re-saves (captured_at + original bytes fingerprint). Both inputs are
+// preserved by resaveScreenshot (fe-002), so the sid survives a re-save AND an
+// array splice → it is the mutation handle for delete / re-open / re-save.
+function screenshotId(s) {
+  const orig = s.original || "";
+  return `${s.captured_at}|${orig.length}:${orig.slice(-24)}`;
+}
+// Resolve a stable identity to its current array position in a freshly-read report.
+// Returns -1 when the shot is gone (deleted mid-edit / not in this target) →
+// callers fail safe (no throw, no wrong-record write).
+function indexOfScreenshotId(r, sid) {
+  return r.screenshots.findIndex((s) => screenshotId(s) === sid);
 }
 
 // --- helpers -----------------------------------------------------------------
@@ -253,6 +284,39 @@ async function handle(msg) {
       emitReportCountChanged(port, 0);  // site 3: helper guard drops null (non-target clear)
       return { ok: true };
     }
+    case "GET_REPORT_SCREENSHOTS": {
+      const port = await currentTargetPort();          // released SSOT; non-target → null
+      const r = await getReport(port);                 // port==null → EMPTY_REPORT(), no IDB read
+      return {
+        port,
+        screenshots: r.screenshots.map((s, index) => ({
+          index,                                        // display ordering only — NOT the mutation handle
+          sid: screenshotId(s),                         // stable identity (captured_at + original fingerprint)
+          thumbnail: s.annotated || s.original,         // annotated PNG; fall back to original when no annotations
+          url: s.url, title: s.title, captured_at: s.captured_at,
+          hasAnnotations: !!(s.annotations && s.annotations.length),
+        })),
+      };
+    }
+    case "DELETE_SCREENSHOT": {
+      const port = await currentTargetPort();
+      if (port == null) return { error: "no current Snapdeck target tab" };
+      const r = await getReport(port);
+      const index = indexOfScreenshotId(r, msg.sid);   // match by stable identity, never array position
+      if (index < 0) {
+        return { error: "no such screenshot" };         // already deleted / not in current target → fail-safe no-op
+      }
+      r.screenshots.splice(index, 1);                  // remove exactly that one
+      if (r.screenshots.length === 0) {
+        await deleteReport(port);                       // GC: remove the report:<port> KEY
+      } else {
+        await setReport(port, r);                       // shrink the record
+      }
+      emitReportCountChanged(port, r.screenshots.length);  // badge repaints
+      return { ok: true, count: r.screenshots.length };
+    }
+    case "REOPEN_SCREENSHOT":
+      return reopenScreenshot(msg.sid);
     default:
       return { error: "unknown message" };
   }
@@ -330,6 +394,66 @@ async function saveReport() {
     return res.json;
   }
   return { error: (res.json && res.json.error) || res.text || `save failed (HTTP ${res.status})` };
+}
+
+// =============================================================================
+// w2-screenshot-gallery — re-open + preserve-from-record re-save (STORY-fe-002)
+// =============================================================================
+
+// Re-open a stored screenshot in the in-page editor by stable identity (sid).
+// Returns quickly (pre-flight PING only) so the popup can surface a no-host error.
+// The long-lived ANNOTATE round-trip + re-save run deferred after the popup closes.
+async function reopenScreenshot(sid) {
+  const port = await currentTargetPort();
+  if (port == null) return { error: "no current Snapdeck target tab" };
+  const r = await getReport(port);
+  const index = indexOfScreenshotId(r, sid);     // resolve stable identity → current position
+  const shot = r.screenshots[index];
+  if (index < 0 || !shot) return { error: "no such screenshot" };
+
+  const tab = await activeTab();
+  // Pre-flight PING — proves content-script host present, not busy (returns quickly).
+  // The popup awaits THIS result and surfaces {error} or window.close() on {ok}.
+  try {
+    await chrome.tabs.sendMessage(tab.id, { type: "PING" });
+  } catch (e) {
+    return { error: "could not open the annotation overlay (reload the page so the content script loads): " + e.message };
+  }
+
+  // Host present → fire the long-lived ANNOTATE round-trip fire-and-forget.
+  // The SW survives popup closing, so .then() re-save runs after window.close().
+  // Pass the STABLE sid (not a held array index) — the array may splice mid-edit.
+  chrome.tabs.sendMessage(tab.id, { type: "ANNOTATE", image: shot.original, model: shot.model })
+    .then((resp) => resaveScreenshot(port, sid, resp))
+    .catch(() => { /* tab navigated/closed mid-edit → record left unchanged */ });
+
+  return { ok: true, opening: true };
+}
+
+// Re-save the edited screenshot back into the report — preserve-from-record contract.
+// Takes ONLY model/annotated/annotations from the editor response; preserves ALL
+// other fields (original, console, network, url, title, captured_at, viewport).
+async function resaveScreenshot(port, sid, resp) {
+  if (!resp || resp.cancelled) return;          // Cancel OR busy ({cancelled:true,busy:true}) → unchanged
+
+  const r2 = await getReport(port);             // re-read fresh (robust to SW wake + mid-edit splice)
+  const index = indexOfScreenshotId(r2, sid);   // match by STABLE identity, NOT held array position
+  const target = r2.screenshots[index];
+  if (index < 0 || !target) return;             // shot deleted while overlay open → FAIL-SAFE no-op
+
+  // Take ONLY from the editor response:
+  target.model       = resp.model ?? null;
+  target.annotated   = resp.annotated;
+  target.annotations = resp.annotations || [];
+
+  // PRESERVE from the pre-edit record (NEVER from resp):
+  //   target.original, target.console, target.network,
+  //   target.url, target.title, target.captured_at, target.viewport
+  // (untouched by construction — only the three fields above are overwritten;
+  //  original+captured_at preserved → sid is UNCHANGED across re-saves)
+
+  await setReport(port, r2);
+  // NO emitReportCountChanged — a re-save does NOT change the count
 }
 
 // =============================================================================

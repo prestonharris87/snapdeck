@@ -3,14 +3,14 @@ type: feature
 slug: w0-per-target-reports
 wave: 0
 parent_epic: snapdeck-ux-improvements
-status: in-progress
+status: released
 created_at: 2026-06-18T00:00:00Z
 last_run_id: run-20260619-161653-52371
 depends_on: []
 frontend_lane: N/A
 visual_references: []
-released_at: 2026-06-19T15:01:25Z
-pr_url: https://github.com/prestonharris87/snapdeck/pull/1
+released_at: 2026-06-20T16:14:13Z
+pr_url: https://github.com/prestonharris87/snapdeck/pull/2
 ---
 
 # Feature: Per-target in-progress reports
@@ -273,3 +273,4 @@ Domains an architect explicitly decided needed no work for this feature. The sen
 2026-06-19T03:49:51Z — orchestrator: status: 'planned' -> 'in-progress' (started via /mat_implement_feature (BOSS-mode))
 2026-06-19T15:01:25Z — BOSS: status: 'in-progress' -> 'released' (PR #1) (Wave 0 released via PR #1 (merge 5526403); BOSS-coordinated wave landing; node --test 56/56)
 2026-06-19T16:17:45Z — orchestrator: status: 'released' -> 'in-progress' [REOPENED for STORY-fe-003] (re-opened to ship STORY-fe-003 (storage.session emission) via /mat_implement_feature [BOSS-mode])
+2026-06-20T16:14:13Z — BOSS: status: 'in-progress' -> 'released' (PR #2) (Re-released: added STORY-fe-003 (REPORT_COUNT_CHANGED emission) shipped in Wave-1 PR #2 (8c340a6); all stories released)

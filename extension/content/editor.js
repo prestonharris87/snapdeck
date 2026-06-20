@@ -325,7 +325,7 @@
         if (item.width <= 0 || item.height <= 0) return;
         var rect = new Konva.Rect({
           x: item.x, y: item.y, width: item.width, height: item.height,
-          stroke: "#1e88e5", strokeWidth: 2,
+          stroke: "#e53935", strokeWidth: 2,
           fill: "rgba(0,0,0,0.001)", // near-transparent fill makes interior hittable for click-select
           draggable: tool === "select",
         });
@@ -400,7 +400,7 @@
           drawing.x = Math.min(drawing._x0, p.x); drawing.y = Math.min(drawing._y0, p.y);
           drawing.width = Math.abs(p.x - drawing._x0); drawing.height = Math.abs(p.y - drawing._y0);
           var previewName = drawing.type === "text" ? "__textdrawing" : "__boxdrawing";
-          var previewStroke = drawing.type === "text" ? "#e53935" : "#1e88e5";
+          var previewStroke = "#e53935"; // both text and box draw-preview use annotation red (fe-001)
           var tmp = annLayer.findOne("." + previewName);
           if (tmp) { tmp.x(drawing.x); tmp.y(drawing.y); tmp.width(drawing.width); tmp.height(drawing.height); }
           else { annLayer.add(new Konva.Rect({ name: previewName, x: drawing.x, y: drawing.y, width: drawing.width, height: drawing.height, stroke: previewStroke, strokeWidth: 2, fill: "rgba(0,0,0,0.001)", dash: [4, 4] })); }
@@ -482,7 +482,7 @@
         var annotated = stage.toDataURL({ pixelRatio: dpr });
         // Use the pure module (fe-003): byte-frozen lossy projection + lossless model (additive field)
         var em = window.__snapdeckEditorModel;
-        var annotations = em.projectAnnotations(model);    // box excluded; arrow/text byte-frozen
+        var annotations = em.projectAnnotations(model);    // arrow/text byte-frozen; box projected (w2 rectangle, fe-002)
         var losslessModel = em.serializeModel(model);      // {version:1, items:[…]} deep clone
         var buffers = window.__snapdeckBuffers || { console: [], network: [] };
         cleanup();
@@ -524,7 +524,7 @@
     el.appendChild(grip);
     var arrow = btn("➤ Arrow", "Draw a red arrow (drag)");
     var text = btn("T Text", "Add a text comment (drag a box)");
-    var box = btn("Box", "Draw a box (drag)"); // plain-text label per fe-001 (no emoji/inline SVG)
+    var box = btn("Rectangle", "Draw a rectangle (drag)"); // plain-text label per fe-001 (no emoji/inline SVG); key+dispatch stay "box"
     var select = btn("⤢ Select", "Select / move / resize");
     var sepVis = document.createElement("span"); sepVis.className = "snapdeck-sep"; el.appendChild(sepVis);
     // Visibility toggle — plain-text "Hide"/"Show" label; no emoji / symbol-icon / inline SVG (fe-003).

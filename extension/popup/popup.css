@@ -35,3 +35,108 @@ body {
 .sd-status { margin-top: 8px; font-size: 12px; min-height: 16px; color: #9aa0ad; word-break: break-word; }
 .sd-status.sd-ok { color: #7bc47f; }
 .sd-status.sd-err { color: #e88; }
+
+/* --- Gallery (w2-screenshot-gallery) --------------------------------------- */
+.sd-gallery-head {
+  margin-top: 12px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: #9aa0ad;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.sd-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.sd-empty {
+  font-size: 12px;
+  color: #9aa0ad;
+  padding: 4px 0;
+}
+.sd-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+/* Thumbnail button */
+.sd-thumb {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 1px solid #3a3d4a;
+  background: #2c2f3a;
+  border-radius: 6px;
+  cursor: pointer;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+}
+.sd-thumb:hover { border-color: #aac2dd; }
+.sd-thumb:focus-visible { outline: 2px solid #aac2dd; outline-offset: 2px; }
+.sd-thumb-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.sd-thumb-idx {
+  position: absolute;
+  bottom: 3px;
+  right: 4px;
+  font-size: 10px;
+  color: #e7e9ee;
+  background: rgba(0,0,0,0.55);
+  border-radius: 3px;
+  padding: 1px 4px;
+  pointer-events: none;
+}
+/* Delete affordance */
+.sd-del {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.sd-del-btn {
+  flex: 1;
+  padding: 4px 6px;
+  font-size: 11px;
+  border: 1px solid #3a3d4a;
+  background: #2c2f3a;
+  color: #9aa0ad;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.sd-del-btn:hover { background: #353948; color: #e7e9ee; }
+.sd-del-btn:focus-visible { outline: 2px solid #aac2dd; outline-offset: 2px; }
+/* Confirm two-state */
+.sd-del-prompt {
+  font-size: 11px;
+  color: #9aa0ad;
+  align-self: center;
+  white-space: nowrap;
+}
+.sd-del-confirm {
+  padding: 4px 6px;
+  font-size: 11px;
+  border: 1px solid #c0392b;
+  background: #2c2f3a;
+  color: #e88;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.sd-del-confirm:hover { background: #3a2525; }
+.sd-del-confirm:focus-visible { outline: 2px solid #e88; outline-offset: 2px; }
+.sd-del-cancel {
+  padding: 4px 6px;
+  font-size: 11px;
+  border: 1px solid #3a3d4a;
+  background: #2c2f3a;
+  color: #9aa0ad;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.sd-del-cancel:hover { background: #353948; color: #e7e9ee; }
+.sd-del-cancel:focus-visible { outline: 2px solid #aac2dd; outline-offset: 2px; }

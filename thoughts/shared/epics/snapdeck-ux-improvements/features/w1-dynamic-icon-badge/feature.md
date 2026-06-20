@@ -3,13 +3,15 @@ type: feature
 slug: w1-dynamic-icon-badge
 wave: 1
 parent_epic: snapdeck-ux-improvements
-status: in-progress
+status: released
 created_at: 2026-06-18T00:00:00Z
 last_run_id: run-20260619-150619-36719
 depends_on: [w0-per-target-reports]
 frontend_lane: N/A
 skip_ui_designer: true
 visual_references: []
+released_at: 2026-06-19T22:19:58Z
+pr_url: https://github.com/prestonharris87/snapdeck/pull/2
 ---
 
 # Feature: Dynamic per-tab toolbar icon + badge
@@ -382,3 +384,4 @@ Domains an architect explicitly decided needed no work for this feature. The sen
 ## History
 
 2026-06-19T21:43:33Z — orchestrator: status: 'planned' -> 'in-progress' (started via /mat_implement_feature (BOSS-mode, Wave-1 landing))
+2026-06-19T22:19:58Z — BOSS: status: 'in-progress' -> 'released' (PR #2) (Wave 1 released via PR #2 (merge 8c340a6); node --test 121/121)

@@ -3,7 +3,7 @@ type: feature
 slug: w2-screenshot-gallery
 wave: 2
 parent_epic: snapdeck-ux-improvements
-status: stub
+status: planning
 created_at: 2026-06-18T00:00:00Z
 last_run_id: run-20260619-021434-24507
 depends_on: [w0-per-target-reports, w0-editor-foundation]

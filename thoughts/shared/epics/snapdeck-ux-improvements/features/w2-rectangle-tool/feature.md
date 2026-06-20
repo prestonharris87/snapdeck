@@ -3,9 +3,9 @@ type: feature
 slug: w2-rectangle-tool
 wave: 2
 parent_epic: snapdeck-ux-improvements
-status: planned
+status: in-progress
 created_at: 2026-06-18T00:00:00Z
-last_run_id: run-20260620-161821-90174
+last_run_id: run-20260620-173825-86207
 depends_on: [w0-editor-foundation, w1-text-box-autofit]
 frontend_lane: N/A
 visual_references: []
@@ -329,3 +329,7 @@ Domains an architect explicitly decided needed no work for this feature. The sen
 
 - **database** — **No database changes required for this feature.**
 - **devops** — **No devops changes are required for `w2-rectangle-tool`.** This is a sentinel story documenting
+
+## History
+
+2026-06-20T17:39:08Z — orchestrator: status: 'planned' -> 'in-progress' (started via /mat_implement_feature (BOSS-mode))

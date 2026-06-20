@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: in-progress
+status: validated
 depends_on: []
 frontend_lane: N/A
 visual_references: []
@@ -396,3 +396,9 @@ table, not multi-tenant); recorded so the PO sees it was applied.
   pipeline this feature exists to feed. The lossless-round-trip AC is unaffected (model items
   untouched; only the lossy projection skips). The feature.md render-guard AC (#11) was extended with
   a one-clause projection-symmetry note to keep the robustness contract complete (PO-owned artifact).
+
+## Validation
+
+- 2026-06-20 — result: **validated** (frontend-validator); honesty: **passed** (honesty-check-validator).
+- frontend-validator: all ACs met — box branch in `projectAnnotations` (Math.round, inline finite/≤0 guard mirroring `renderBox`, coupling comment naming `reports.py _render_markdown`), frozen box-exclusion tests flipped to box-projected, +3 new tests (rounding, non-finite guard, ≤0-dim guard), arrow/text byte-frozen + serialize/deserialize round-trip tests green; full suite **124/124**.
+- honesty-check: all 7 suppression rules clear — the frozen-test flip is the mandated contract change with strengthened exact-value `deepEqual` assertions (45→50 asserts); no skip/only/delete/weaken.

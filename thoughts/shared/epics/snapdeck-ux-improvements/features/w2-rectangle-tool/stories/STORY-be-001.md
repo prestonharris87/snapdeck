@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: backend-engineer
 author_architect: backend-architect
 effort: 1
-status: approved
+status: validated
 depends_on: [STORY-fe-002]
 diff_estimate: substantive
 files_modified: [controller/snapdeck_controller/reports.py, controller/tests/test_reports.py]
@@ -202,6 +202,10 @@ n/a
 - 2026-06-20 — created by backend-architect (effort=1, depends on STORY-fe-002; projected `type`
   literal `"box"` ratified with frontend-architect; DB sentinel + no-devops-wiring confirmed with
   database-architect / devops-architect).
+- 2026-06-20 — implemented by backend-engineer: added `elif a.get("type") == "box":` branch +
+  coupling comment to `_render_markdown`; created `controller/tests/test_reports.py` (5 pytest
+  cases); fixed pre-existing Python 3.12+ curly-quote-as-delimiter syntax error in arrow/else
+  branches (output unchanged); 5/5 pass, ruff clean; commit `3f3244a`.
 
 ## Contrarian Findings
 
@@ -320,3 +324,31 @@ table → no audit columns; not multi-tenant; no parameterized-query surface —
   and it self-heals when the controller is updated past this story. **Standing guardrail:** if the
   project ever adds a controller/extension compatibility note or CHANGELOG, record that `report.md`
   rectangle rendering requires a controller at/past STORY-be-001.
+
+## Engineer Notes
+
+**Pre-existing syntax corruption fixed as part of this story:**
+`reports.py` lines 223-226 (the arrow branch) and the `else` branch used Unicode curly-quote
+characters (`"` U+201C / `"` U+201D) as Python **string delimiters** instead of ASCII `"`.
+This is a syntax error under Python 3.12+ (`SyntaxError: invalid character '"' (U+201C)`).
+The file could not be imported at all, making any test against `_render_markdown` impossible.
+These lines were fixed to use ASCII `"` as delimiters while preserving curly quotes where they
+appear as decorative **content** inside strings (e.g. the text-annotation label output `"hello"`).
+The rendered output of the text and arrow branches is unchanged.
+
+My new `box` branch code was also initially written with curly-quote delimiters by the Edit tool
+(same corruption vector); fixed by the same byte-level correction pass.
+
+**Test file creates `controller/tests/` directory** (the repo's first pytest file, per CONTRIBUTING.md:
+"There isn't a formal test suite yet").
+
+**Integration smoke:** this story modifies an internal render helper (`_render_markdown`), not an HTTP
+endpoint. The `/report/save` controller endpoint is localhost-only and unchanged. Smoke verification
+is covered by the 5 pytest cases rather than a live endpoint hit. Backend service not required.
+
+## Validation
+
+- 2026-06-20 — result: **validated** (backend-validator); honesty: **passed** (honesty-check-validator).
+- backend-validator: all ACs met — `_render_markdown` box branch renders `- 🟥 (x,y) w×h` (not the raw-dict fallthrough), cases on the locked `"box"` literal, coupling comment names the JS emitter; text/arrow branches + catch-all `else` unchanged; `save_report`/`report.json` untouched. **pytest 5/5 green** (venv-qualified `.venv/bin/python -m pytest`), ruff clean.
+- honesty-check: new pytest cases are real assertions (no skip/xfail/stub); production `_render_markdown` genuinely changed; nothing suppressed elsewhere.
+

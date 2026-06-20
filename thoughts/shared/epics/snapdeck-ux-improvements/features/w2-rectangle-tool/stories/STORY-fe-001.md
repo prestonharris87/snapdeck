@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 1
-status: in-progress
+status: validated
 depends_on: []
 frontend_lane: N/A
 visual_references: []
@@ -205,3 +205,9 @@ entity table, not multi-tenant, no new permission); recorded so the PO sees the 
   surface). Validate checklist present (6 items). No substantive change. Confirmed the model/wire
   `type:"box"` literal + `api.onTool("box")` dispatch stay untouched (the rename is label-only) — the
   no-regression anchor for already-persisted records.
+
+## Validation
+
+- 2026-06-20 — result: **validated** (frontend-validator); honesty covered by the bundled-diff honesty pass recorded on STORY-fe-002 (commit `bb61377`; 0 suppression).
+- frontend-validator confirmed all 3 ACs correct in `editor.js`: stroke `#1e88e5`→`#e53935`, red draw-preview, toolbar label/title "Rectangle"; internal tool key + `api.onTool("box")` + model `type:"box"` + near-transparent fill unchanged; no arrow/text/select regression.
+- **Disposition on the validator's needs-work (commit-granularity only — code was confirmed correct):** ACCEPTED, story validated. The needs-work was solely that commit `bb61377` bundled fe-001 + fe-002 (same engineer owns both), touching `editor-model.js`/test which fe-001 lists in `files_not_modified`. Those files are legitimately STORY-fe-002's, co-committed by the same engineer — no file outside the combined fe-001+fe-002 scope was touched, so the `files_not_modified` guard's real intent (catch wrong-subsystem edits) was not breached. Root cause: the orchestrator's imprecise "commit atomically" instruction (atomic *pathspec* = two per-story exact-path commits was intended). Splitting is infeasible (`bb61377` is `HEAD~2`; `git rebase -i` is unsupported in this environment) and **moot under the BOSS-mode wave-PR squash**. Traceability preserved via the commit message naming both stories + per-story Engineer Notes. Future per-story commits will use one atomic-pathspec commit each.

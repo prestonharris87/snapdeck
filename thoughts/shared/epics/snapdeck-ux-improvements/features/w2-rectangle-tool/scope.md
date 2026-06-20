@@ -46,6 +46,12 @@ implies).
   forward-flagged _"w2 handles eventual projection"_. Projection entry carries
   `{id, type, x, y, width, height}` with `Math.round` on coordinates (rounding convention matches
   arrow/text). Exact `type` string + shape is an open decision (see Critical directives).
+- **Render the rectangle in the controller's human-readable report summary** — `_render_markdown`
+  in `controller/snapdeck_controller/reports.py` currently only cases `text`/arrow, so a rectangle
+  is stored in `report.json` but silently absent from `report.md`. Add a `rectangle` (or `box`,
+  matching the projected `type`) branch so it appears in the human summary. Small, in-repo,
+  backend/Python; completes the feature. (BOSS recon 2026-06-20; backend-architect confirms shape
+  at decompose. report.json visibility is met regardless — this is the human-summary surface only.)
 - **Update the released frozen unit tests** that assert the box is excluded from the projection
   (`extension/editor.model.test.mjs:88-101` — `projectAnnotations excludes box items` /
   `returns empty array for box-only model`) to the new "rectangle is projected" contract. These
@@ -92,13 +98,14 @@ the released w1-text-box-autofit, so the two `editor.js` annotation-shape rewrit
   records. **Recommendation: keep the model/wire type `"box"`; "Rectangle" is the user-facing
   name only.** If architects choose a distinct `"rect"` type, they MUST handle dispatch +
   round-trip of legacy `"box"` items. (Open decision — resolve in `/mat_write_feature`.)
-- **The projected `type` string is a downstream contract — coordinate it.** The lossy projection
-  feeds the upstream `/report/save` payload (`background.js:315-323`), consumed by the local
-  Snapdeck **controller** (`deck up` worktree controller, **outside `extension/`**). Adding a new
-  rectangle annotation type means that consumer (and whatever renders report→defects) must tolerate
-  it. **Verify downstream tolerance before shipping the projection; if the controller consumer is
-  cross-team / out-of-repo, escalate to BOSS** rather than assuming tolerance. (This is the #1 risk
-  — see below.)
+- **The projected `type` string reaches the controller — tolerance CONFIRMED (BOSS recon, 2026-06-20).**
+  The lossy projection feeds the upstream `/report/save` payload (`background.js:315-323`), consumed
+  by the in-repo Snapdeck **controller** `controller/snapdeck_controller/reports.py`. That endpoint
+  stores `annotations` **opaquely** (`shot.get("annotations") or []` → `report.json`, no type
+  validation, no rejection), so adding a rectangle type is **SAFE — lock the projection contract**;
+  `report.json` + the report→defects pipeline receive it. The only non-error gap is the human-readable
+  `report.md` (`_render_markdown` only cases text/arrow) — addressed by the controller in-scope story
+  above. No cross-team / out-of-repo dependency; my team owns `controller/`.
 - **DO NOT fork the editor render/re-open path.** w2-screenshot-gallery re-opens arbitrary stored
   models through the *same* `render()` boundary (inheriting `RENDER_ITEM_CAP` / `RENDER_TEXT_CAP` +
   the text-box clamp/short-circuit). Keep the rectangle on the shared path so those guards stay
@@ -166,18 +173,18 @@ vanilla-JS Konva surface.)
 2. **Projected annotation shape + `type` string.** e.g. `{id, type:"rect"|"box", x, y, width,
    height}` with `Math.round`. Must be coordinated with the downstream `/report/save` controller
    consumer (see risk #1).
-3. **Whether downstream projection is in v1 or deferred.** Recommendation: **in v1** (w0 explicitly
-   forward-flagged it to w2 and a report-invisible rectangle is of little value), gated on
-   downstream-consumer tolerance.
+3. **Whether downstream projection is in v1 or deferred.** **RESOLVED: in v1.** Controller
+   tolerance confirmed in-repo + opaque (BOSS recon) — no longer gated. Includes the controller
+   `_render_markdown` rectangle branch so the rectangle is visible in both `report.json` and the
+   human-readable `report.md`.
 
 ## Risk surface
 
-1. **Downstream `/report/save` consumer tolerance (#1 risk, possible BOSS escalation).** The
-   rectangle annotation type newly reaches the local Snapdeck **controller** `/report/save`
-   endpoint (likely the `deck` CLI / worktree controller, **outside `extension/`** — not found in
-   `extension/`). If that consumer rejects or mishandles an unknown annotation type, the projection
-   change breaks report saving. Verify tolerance; if the consumer is cross-team / out-of-repo,
-   whisper BOSS before locking the projection contract.
+1. **Downstream `/report/save` consumer tolerance — RESOLVED (BOSS recon, 2026-06-20).** The
+   controller is **in-repo** (`controller/snapdeck_controller/reports.py`) and stores `annotations`
+   **opaquely** (no type validation, no rejection) → adding the rectangle type is **safe**; the
+   projection contract can be locked. Residual (non-error): `_render_markdown` skips an unknown type
+   in `report.md`, handled by the controller in-scope story. Was the #1 risk; now low/closed.
 2. **Frozen released-test coupling.** `extension/editor.model.test.mjs:88-101` assert box is
    *excluded* from the projection. The projection change requires updating these released tests in
    the same diff or the merged `node --test` suite regresses (currently 121/121).

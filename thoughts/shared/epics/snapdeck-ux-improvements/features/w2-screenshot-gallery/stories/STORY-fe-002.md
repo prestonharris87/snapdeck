@@ -567,3 +567,9 @@ edit that lowers/removes a cap re-opens the DoS axis and must come back through 
   concatenated; the IDB key is `report:${int port}` from the localhost-gated resolver. ✓
 
 **Recommendation:** none.
+
+**PO disposition (S1 — bounded arbitrary-model re-open, CONFIRMED):** ACCEPT_AS_RECOMMENDATION — security CONFIRMED the load-bearing verdict (bounded end-to-end, caps inherited verbatim, no bypass/fork; defense-in-depth, not externally-reachable). Already validator-enforced by the feature.md "Bounded arbitrary-model re-open (security)" + "Overlay reuse, inherited guards" (caps-not-weakened / no-bypass) ACs and the Konva-lane hostile-model E2E + fe-002's bounded-render validate item; this AC was promoted at decompose, so no new AC (no double-promote). The Konva-lane E2E must stay green. Not gating.
+
+**PO disposition (S2 — bounded-at-render ≠ bounded-envelope LOW):** ACCEPT_AS_RECOMMENDATION — this closes the fe-002 Finding 2 item I deferred to Phase 7; security confirms it is acceptable defense-in-depth (extension-own IndexedDB, isolated-world, not externally-reachable; persisting the full model verbatim is REQUIRED for the model-byte-lossless AC). Standing guardrail (already a feature.md AC): do NOT weaken `RENDER_ITEM_CAP=500` / `RENDER_TEXT_CAP=10000` — any future cap lowering re-opens the DoS axis and must return through security. Not gating.
+
+**PO disposition (S3 — re-open/re-save entry-point hygiene, CLEAN):** ACCEPT_AS_RECOMMENDATION — security-positive; the port-internal resolution, fail-safe-no-op on absent `sid`, and no-injection properties are already covered by the block-fix two-port-isolation ACs and fe-002's validate items. Not gating.

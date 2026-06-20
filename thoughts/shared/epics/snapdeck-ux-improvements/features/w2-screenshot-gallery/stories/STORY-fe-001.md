@@ -523,3 +523,11 @@ HTTP endpoint, no login); **secrets** none; **audit columns** N/A (no server ent
 **rate limiting / CSRF / CORS** N/A (not externally_connectable, no server change, local
 single-user); **injection** none (string-equality `sid`, int port key); **multi-tenant
 isolation** → analog is two-port isolation, confirmed (S1).
+
+**PO disposition (S1 — entry-point hygiene / forged-foreign `sid` / two-port isolation):** ACCEPT_AS_RECOMMENDATION — security-positive, no change. The fail-safe-no-op + two-port isolation are already validator-enforced by the feature.md "No mid-edit wrong-record corruption (stable-identity)" and "Zero-port-arg, stable-identity API / two-port isolation" ACs plus fe-001's two-port-isolation and unknown-`sid`-no-op validate items. Not gating.
+
+**PO disposition (S2 — `sid` collision/spoofing LOW):** ACCEPT_AS_RECOMMENDATION — a collision is effectively impossible for distinct PNG captures and there is no external path to plant a colliding `sid` (computed SW-side from preserved fields; the popup only echoes one back); the "`sid` present + distinct per shot" validate item covers it. Engineers MAY strengthen the fingerprint to a full-`original` hash at their discretion; not required, not gating. Standing guardrail: the identity MUST derive only from preserved fields (`captured_at` + `original`).
+
+**PO disposition (S3 — hard-delete + GC, soft-delete N/A):** ACCEPT_AS_RECOMMENDATION — correct pattern for an ephemeral local in-progress store, gated behind the fe-003 confirm; the GC-extent precision (bounds PNG/payload bloat + the delete-to-empty key, NOT the Save/Clear empty-key keyspace) is already recorded in fe-001 Finding 2's PO revision. Not gating.
+
+**PO disposition (default-checklist N/A items):** ACCEPT_AS_RECOMMENDATION — checklist applied; the localhost host-guard (`currentTargetPort()`) + two-port isolation are the operative controls, all other items N/A for a local no-server MV3 surface. Not gating.

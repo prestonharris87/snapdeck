@@ -169,6 +169,13 @@ grid + delete-confirm **inline against the existing `popup.css` patterns** (the
   display `#N` index is presentation-only. An identity-scoped mutation in target A never
   touches target B's `report:<port>` record (write-key ≡ read-key); a mutation whose
   identity is absent from the current target's report is a no-op.
+- [ ] **No DOM-XSS sink in the gallery render (output encoding) [security].** The popup
+  builds thumbnail tiles and labels via `createElement` + `textContent` + `img.src` only —
+  **no** `innerHTML` / `insertAdjacentHTML` / raw-HTML / template-string-to-HTML sink in the
+  gallery render. Stored fields that trace to capture-time page data (`thumbnail` data-URL,
+  `title`, `url`, `#N` badge) are written as attributes/properties or `textContent`, never
+  parsed as HTML (the `thumbnail` is an inert base64 PNG data-URL in `img@src`). A grep of
+  the new `popup.js` gallery code finds zero raw-HTML sinks.
 - [ ] **Out-of-scope untouched.** The feature does NOT modify `editor.js`
   draw/render/shape logic, the `model` envelope / `deserializeModel` /
   render-boundary guards, or the per-port report-store keying contract

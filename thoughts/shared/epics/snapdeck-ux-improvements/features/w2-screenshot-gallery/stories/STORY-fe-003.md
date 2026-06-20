@@ -182,6 +182,12 @@ must show a visible focus ring (keyboard-activatable per feature.md).
 - [ ] No emoji / symbol-icon char / inline `<svg>` in new markup; all new labels are
   plain text; decorative `<img>` has `alt=""`; every interactive control has an
   accessible label; `.sd-thumb` shows a visible focus ring.
+- [ ] **No raw-HTML sink (security — output encoding, PROMOTED from Security Review S1):**
+  tiles + labels are assembled via `createElement` + `textContent` + `img.src` (or
+  equivalent attribute/property writes) — **no** `innerHTML`, `insertAdjacentHTML`, or
+  template-string-to-HTML anywhere in the gallery render. A grep of the new `popup.js`
+  gallery code finds zero raw-HTML sinks; stored `thumbnail`/`title`/`url`/`#N` reach the
+  DOM only as `img.src` / attribute / `textContent`, never parsed as HTML.
 - [ ] Existing head / note / Add / Save / Clear chrome is visually + behaviorally
   unchanged.
 - [ ] **(browser-tester smoke — required for this UI story)** `bt` loads the popup
@@ -341,3 +347,9 @@ no change.
 Presentation-only popup, no server/HTTP surface: **authn/authz/CSRF/CORS/rate-limit** N/A;
 **secrets** none; **injection** none (no query construction); **multi-tenant** N/A. The one
 applicable item — **output encoding** — is confirmed in effect (S1).
+
+**PO disposition (S1 — no new DOM-XSS sink / output encoding):** PROMOTE_TO_AC — see the new feature.md AC "No DOM-XSS sink in the gallery render (output encoding)" + the sharpened fe-003 validate item "No raw-HTML sink" (tiles/labels via `createElement` + `textContent` + `img.src`; zero `innerHTML`/`insertAdjacentHTML`/raw-HTML sink, greppable). This is the feature's sole DOM-output trust boundary and a concrete engineer constraint, so it is made validator-enforceable rather than left advisory.
+
+**PO disposition (S2 — full-res PNG payload LOW):** ACCEPT_AS_RECOMMENDATION — a local latency/jank concern, not a security DoS (not externally reachable; bounded by the user's own capture count); already accepted for v1 with the named re-trigger (an `OffscreenCanvas` downscale in fe-001's projection) in fe-003 Finding 2's PO revision. Engineers may implement the downscale at their discretion; not gating.
+
+**PO disposition (default-checklist N/A items):** ACCEPT_AS_RECOMMENDATION — presentation-only popup with no server/HTTP surface; the one applicable item (output encoding) is PROMOTED via the S1 disposition above. Not gating.

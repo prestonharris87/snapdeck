@@ -60,6 +60,7 @@ test("serializeModel handles null/undefined model gracefully", function () {
 
 // ---------------------------------------------------------------------------
 // projectAnnotations — byte-frozen output (fe-003 §Unit tests, fe-005 AC)
+// arrow/text entries are byte-frozen; box is now projected (w2 rectangle, fe-002)
 // ---------------------------------------------------------------------------
 
 test("projectAnnotations byte-frozen vs fixture — arrow item", function () {
@@ -85,19 +86,41 @@ test("projectAnnotations byte-frozen vs fixture — arrow + text (mixed model)",
   assert.deepEqual(result[1], { id: "t1", type: "text", x: 51, y: 60, text: "hello" });
 });
 
-test("projectAnnotations excludes box items (never projected)", function () {
+test("projectAnnotations projects box items (w2 rectangle)", function () {
   var model = [arrowItem, boxItem, textItem];
   var result = projectAnnotations(model);
-  // Box must not appear; arrow and text unchanged
-  assert.equal(result.length, 2);
-  assert.ok(result.every(function (r) { return r.type !== "box"; }), "box must be excluded from projection");
+  // Box IS now projected (w2); arrow and text entries byte-frozen at same positions
+  assert.equal(result.length, 3);
   assert.deepEqual(result[0], { id: "a1", type: "arrow", from: [100, 121], to: [240, 201] });
-  assert.deepEqual(result[1], { id: "t1", type: "text", x: 51, y: 60, text: "hello" });
+  assert.deepEqual(result[1], { id: "b1", type: "box", x: 300, y: 80, width: 160, height: 90 });
+  assert.deepEqual(result[2], { id: "t1", type: "text", x: 51, y: 60, text: "hello" });
 });
 
-test("projectAnnotations returns empty array for box-only model", function () {
+test("projectAnnotations projects a box-only model", function () {
   var result = projectAnnotations([boxItem]);
-  assert.deepEqual(result, []);
+  assert.deepEqual(result, [{ id: "b1", type: "box", x: 300, y: 80, width: 160, height: 90 }]);
+});
+
+test("projectAnnotations Math.rounds box geometry", function () {
+  var fractionalBox = { id: "b3", type: "box", x: 10.6, y: 20.4, width: 100.5, height: 50.5 };
+  var result = projectAnnotations([fractionalBox]);
+  assert.deepEqual(result, [{ id: "b3", type: "box", x: 11, y: 20, width: 101, height: 51 }]);
+});
+
+test("projectAnnotations skips a non-finite/≤0 box (render↔projection symmetry)", function () {
+  // Malformed box: non-finite x, string width, Infinity height — mirrors renderBox:324-325 guard
+  var malformedBox = { id: "bad", type: "box", x: NaN, y: 0, width: "120", height: Infinity };
+  var result = projectAnnotations([malformedBox, boxItem]);
+  // Malformed box is absent; well-formed boxItem is projected
+  assert.equal(result.length, 1);
+  assert.deepEqual(result[0], { id: "b1", type: "box", x: 300, y: 80, width: 160, height: 90 });
+});
+
+test("projectAnnotations skips a ≤0-dimension box", function () {
+  var zeroHeight = { id: "z1", type: "box", x: 10, y: 20, width: 100, height: 0 };
+  var zeroWidth  = { id: "z2", type: "box", x: 10, y: 20, width: 0,   height: 50 };
+  assert.deepEqual(projectAnnotations([zeroHeight]), []);
+  assert.deepEqual(projectAnnotations([zeroWidth]),  []);
 });
 
 test("projectAnnotations returns empty array for empty model", function () {

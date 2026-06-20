@@ -1,0 +1,15 @@
+---
+sequence: 0238
+from: team-lead
+to: backend-architect
+step: inline-msg
+run_id: run-20260619-150619-36719
+timestamp: 2026-06-19T21:41:16Z
+team: feat-snapdeck-ux-improvements
+epic: snapdeck-ux-improvements
+---
+
+{
+  "type": "shutdown_request",
+  "reason": "/mat_write_feature complete — STORIES_LOCKED. BE sentinel confirmed + pruned. Thanks for the /resolve contract verification."
+}

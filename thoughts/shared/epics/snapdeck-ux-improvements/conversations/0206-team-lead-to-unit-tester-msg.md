@@ -1,0 +1,15 @@
+---
+sequence: 0206
+from: team-lead
+to: unit-tester
+step: inline-msg
+run_id: run-20260619-170919-3029
+timestamp: 2026-06-19T18:49:35Z
+team: feat-snapdeck-ux-improvements
+epic: snapdeck-ux-improvements
+---
+
+{
+  "type": "shutdown_request",
+  "reason": "/mat_implement_feature w1-text-box-autofit complete; 95/95 green"
+}

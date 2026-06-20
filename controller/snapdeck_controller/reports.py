@@ -224,6 +224,13 @@ def _render_markdown(report: dict) -> str:
                     frm, to = a.get("from"), a.get("to")
                     label = f" — “{a['text']}”" if a.get("text") else ""
                     lines.append(f"- ➡️ {frm} → {to}{label}")
+                # Coupling: “box” is the projected type emitted by STORY-fe-002's projectAnnotations
+                # in extension/content/editor-model.js. If that literal ever changes, this branch
+                # MUST change in lockstep or the rectangle falls through the raw-dict else below.
+                elif a.get("type") == "box":
+                    lines.append(
+                        f"- 🟥 ({a.get('x')},{a.get('y')}) {a.get('width')}×{a.get('height')}"
+                    )
                 else:
                     lines.append(f"- {a}")
             lines.append("")

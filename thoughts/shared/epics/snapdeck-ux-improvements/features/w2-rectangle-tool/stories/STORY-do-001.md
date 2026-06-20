@@ -2,12 +2,12 @@
 type: story
 id: STORY-do-001
 name: "No devops changes required (sentinel)"
-feature: w2-rectangle-tool
-epic: snapdeck-ux-improvements
+parent_feature: w2-rectangle-tool
+parent_epic: snapdeck-ux-improvements
 domain: devops
 assignee: devops-engineer
 author_architect: devops-architect
-status: pending
+status: approved
 sentinel: true
 effort: 1
 diff_estimate: mechanical
@@ -119,6 +119,11 @@ be inventing infra the project does not have.
 
 ## How we validate (sentinel close-out for the devops-engineer)
 
+- [ ] **Sentinel negative assertion:** `git diff --name-only` for this feature shows **no** devops
+  changes — no `extension/manifest.json` edit, no `pyproject.toml` change, no `.claude/.github/workflows/`
+  change, no new content script / new build target. `files_modified: []` holds; `editor-model.js`
+  remains registered before `editor.js` in `content_scripts[1].js`.
+
 1. `git diff --name-only` for the feature shows **no** changes to `extension/manifest.json`,
    `pyproject.toml`, or any file under `.claude/.github/workflows/` attributable to devops.
 2. Manifest well-formedness still holds and `editor-model.js` remains registered before `editor.js`:
@@ -159,3 +164,16 @@ this story only records that none of their work crosses into the devops domain.
   in place (already `content_scripts[1].js`, no manifest change) and updates the `node --test`
   `editor.model.test.mjs`. **No new `content/*.js` file is born, no new isolated-world global, no
   registration entry needed.** Sentinel is final.
+
+## Revisions
+
+- **2026-06-20 — product-owner (arbitrate).** Promoted `status: pending → approved` (sentinel).
+  Contrarian had **no findings** for this story. Frontmatter conformance: normalized `feature` →
+  `parent_feature` and `epic` → `parent_epic` (template-standard keys used by the other stories;
+  `domain: devops` and `id` were already correct). Added one `- [ ]` validate item (finalize floor:
+  ≥1 checkbox per story; the close-out was a numbered list). No change to the sentinel verdict — zero
+  devops work is correct (both files already registered in `content_scripts[1]`; pytest already a
+  declared `[dev]` dep with zero-config auto-discovery; no project CI surface to wire). **Carry-forward
+  for the unit-tester (Phase 5a):** the BE controller pytest is venv-qualified —
+  `.venv/bin/python -m pytest controller/tests/test_reports.py` (a bare system `pytest` fails
+  collection; the editable `snapdeck_controller` + pytest live only in `.venv` per CONTRIBUTING.md:26).

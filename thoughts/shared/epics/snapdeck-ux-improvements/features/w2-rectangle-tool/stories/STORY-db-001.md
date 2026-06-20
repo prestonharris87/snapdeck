@@ -1,11 +1,17 @@
 ---
+type: story
+id: STORY-db-001
 name: "DB sentinel — no schema/store change (rectangle rides opaque model + flat report)"
+domain: database
+parent_feature: w2-rectangle-tool
+parent_epic: snapdeck-ux-improvements
 assignee: database-engineer
 author_architect: database-architect
-status: pending
+status: approved
 sentinel: true
 effort: 1
 diff_estimate: mechanical
+created_at: 2026-06-20T16:45:00Z
 files_modified: []
 files_not_modified:
   - extension/content/editor.js
@@ -82,6 +88,10 @@ reference/seed data, no localized strings, and no retention-rule change.
 
 ## How we validate
 
+- [ ] **Sentinel negative assertion:** `git diff --name-only` for this feature shows **zero**
+  DB-domain changes — no `indexedDB.open("snapdeck", N)` version bump, no `createObjectStore`, no new
+  index, no `report` record-shape change, no seed/reference row, no migration artifact anywhere in the
+  diff. `files_modified: []` holds.
 - **Schema check:** there is no migration artifact in this story's (empty) diff. A
   fresh local provision is unaffected by this feature — there is no relational DB
   to provision. The "service starts" smoke is unchanged: no version-manifest /
@@ -125,3 +135,15 @@ Replies are auto-logged under `features/w2-rectangle-tool/conversations/`. The
 epic-level data model records this decision in
 `thoughts/shared/epics/snapdeck-ux-improvements/data-model.md` §
 `w2-rectangle-tool`.
+
+## Revisions
+
+- **2026-06-20 — product-owner (arbitrate).** Promoted `status: pending → approved` (sentinel).
+  Contrarian had **no findings** for this story (stress-test confirmed db correctly sentineled with
+  peer confirmations). Frontmatter conformance fixes (recurring db-sentinel drift on this epic): added
+  `type: story`, `id: STORY-db-001`, **`domain: database`** (load-bearing — drives database-validator
+  selection), `parent_feature`, `parent_epic`, `created_at`. Added one `- [ ]` validate item (the
+  finalize floor requires ≥1 checkbox per story; the prior `## How we validate` was prose-only). No
+  change to the sentinel verdict — zero DB work for this feature is correct (value-vs-schema: the
+  rectangle rides the released opaque `model` field + flat-file `report.json`; no store/index/version
+  change).

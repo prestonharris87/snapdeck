@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: []
 frontend_lane: N/A
 visual_references: []
@@ -106,6 +106,13 @@ Projection output for a mixed model `[arrow, box, text]` (order preserved by the
    comment at `:60`):
    ```js
    } else if (m.type === "box") {
+     // PO arbitration (INFO#1): mirror renderBox's render-boundary guard so render and projection
+     // treat malformed geometry symmetrically — a non-finite or ≤0 box is NOT projected (it is
+     // already skipped at render by renderBox:324-325). Pure inline check — do NOT import
+     // isFiniteNum from editor.js (this module is dependency-free).
+     var fin = function (n) { return typeof n === "number" && isFinite(n); };
+     if (!fin(m.x) || !fin(m.y) || !fin(m.width) || !fin(m.height)) return;
+     if (m.width <= 0 || m.height <= 0) return;
      result.push({
        id: m.id, type: "box",
        x: Math.round(m.x), y: Math.round(m.y),
@@ -114,6 +121,7 @@ Projection output for a mixed model `[arrow, box, text]` (order preserved by the
    }
    ```
    Keep the arrow/text branches byte-identical — do not reorder fields or touch their `Math.round`.
+   (The `forEach` callback's `return` skips just this item — same control flow `renderBox` uses.)
 2. Update the now-stale docs: the header bullet at `:7` and the `projectAnnotations` doc-comment at
    `:43` (and remove/replace the `:60` `// box: excluded …` comment) so they describe
    `box → {id, type:"box", x, y, width, height}` (w2) instead of "excluded".
@@ -158,6 +166,11 @@ PO-authored browser-tester E2E "Projection reaches /report/save (arrow byte-iden
   `{id,type:"box",x,y,width,height}` shape; **no test still asserts box exclusion** from the
   projection.
 - [ ] A rounding test proves fractional box geometry is `Math.round`ed (matches arrow/text).
+- [ ] **(PO arbitration — INFO#1 promote) Projection geometry guard mirrors `renderBox`:** the box
+  branch skips a non-finite or `≤0`-geometry box (does NOT project it), keeping render and projection
+  symmetric. A unit test pins this (non-finite/`≤0` box is absent from the projection). The
+  lossless-round-trip contract is UNAFFECTED — `serializeModel`/`deserializeModel` are untouched, so a
+  malformed box still survives in `model.items` (only the lossy projection skips it).
 - [ ] `serializeModel` / `deserializeModel` are unchanged; the box round-trip tests (`:163-167`,
   `:175-179`) and opaque-subtype test (`:185-190`) stay green.
 - [ ] Module header docs (`:7`, `:43`) and the test section comment carry no stale "box excluded"
@@ -177,6 +190,12 @@ n/a — pure data-transform module (no chrome / DOM / Konva / UI). No motion sur
   `[boxItem]` → `[{id:"b1",type:"box",x:300,y:80,width:160,height:90}]`.
 - `extension/editor.model.test.mjs` — `projectAnnotations Math.rounds box geometry` —
   `{x:10.6,y:20.4,width:100.5,height:50.5}` → `{x:11,y:20,width:101,height:51}`.
+- `extension/editor.model.test.mjs` — (PO arbitration — INFO#1 promote)
+  `projectAnnotations skips a non-finite/≤0 box (render↔projection symmetry)` — project
+  `[{id:"bad",type:"box",x:NaN,width:"120",height:Infinity}, boxItem]` and assert the malformed box is
+  ABSENT and only the well-formed `boxItem` entry is emitted. Use a pure inline finite check
+  (`typeof n === "number" && isFinite(n)`) — `editor-model.js` is a pure module and MUST NOT import
+  `isFiniteNum` from `editor.js`; mirror the predicate, not the dependency.
 - `extension/editor.model.test.mjs` — (RETAINED, must stay green)
   `projectAnnotations byte-frozen vs fixture — arrow item` / `— text item` /
   `— arrow + text (mixed model)` — proves arrow/text byte-identity is preserved.
@@ -266,3 +285,49 @@ fractional geometry only.
 projection branch (skip non-finite/`≤0` boxes from the projection too, keeping render and projection
 symmetric), or add a one-line test asserting the projection's behavior on a non-finite box so the
 chosen behavior is pinned rather than incidental.
+
+## Acknowledged Risk
+
+**The projected `type:"box"` literal coupling (this emitter ⇄ STORY-be-001's `_render_markdown`) is
+test-unenforced across the JS↔Python seam.** Each side's suite hard-codes its own copy of `"box"`; no
+test runs the real emitter output through the real renderer, so a hypothetical one-sided rename of the
+projected literal would leave both suites green while the rectangle silently falls through the
+controller's raw-dict catch-all in `report.md`.
+
+- **Why accepted (not auto-enforced via a shared fixture):** the projected literal is anchored to the
+  model/wire `type:"box"`, which is **back-compat-locked and immovable** (Critical directive #1) — the
+  architects deliberately chose `"box"` end-to-end precisely so there is *one* identifier with no
+  rename seam. The realistic rename probability is therefore doubly-low, the failure mode is
+  **cosmetic** (`report.json` + the report→defects pipeline are unaffected; only the human `report.md`
+  line degrades), and the consumer side already carries a no-raw-dict-fallthrough guard test (be-001).
+- **Enforcement applied (cheap, in-scope):** a one-line coupling comment in this `projectAnnotations`
+  box branch naming `reports.py` `_render_markdown` + "change the projected `type` literal in lockstep
+  with the controller branch." (Mirror comment required on the be-001 side.)
+- **(b) escalation trigger (recorded, not adopted now):** the contrarian's shared-cross-language
+  fixture (one JSON shape loaded by both the node test and the pytest — the only option that makes a
+  one-sided rename red) becomes worth its cost **if/when a second box-shaped primitive is added**
+  (the stress-test's latent name-collision note) — at that point the projected literal may need to
+  diverge from the model/wire literal and the anchor that makes this risk low disappears. Until then,
+  the comment + decision-memo record is the proportionate disposition.
+
+## Revisions
+
+- **2026-06-20 — product-owner (arbitrate).** Promoted `status: pending → approved`. Cross-domain
+  contract reviewed: the projected `type:"box"` literal is consistent with STORY-be-001 (emitter here,
+  consumer there; be-001 `depends_on: [STORY-fe-002]`) and reflects the arbitrated resolution of the
+  BE architect's initial `"rect"` lean → `"box"` (anchored to the immovable model/wire literal; avoids
+  a third identifier). **Affirmed, no change to the contract.**
+- **Contrarian CONCERN (literal coupling, producer side) → ACKNOWLEDGED RISK + cheap enforcing pin.**
+  See the `## Acknowledged Risk` section above. Disposition: (a) accept with a two-sided coupling code
+  comment + decision-memo record; (b) shared fixture deferred with an explicit re-trigger (second
+  box-shaped primitive). Rejected (c) end-to-end test as disproportionate for a one-line/one-line
+  branch pair.
+- **Contrarian INFO#1 (no projection geometry guard) → PROMOTED (story-level).** Added the
+  finite/`>0` guard to the box branch (mirrors `renderBox:324-325`), a pinning unit test
+  (`projectAnnotations skips a non-finite/≤0 box`), and a `## How we validate` item. Rationale: free +
+  in-scope (the branch is being written here), and it closes an asymmetry with the feature's OWN
+  render-guard AC/E2E — without the guard, a malformed hydrated box is skipped at render but leaks
+  coerced garbage (`x:null`, `0`-dims) into the upstream `/report/save` report, which is exactly the
+  pipeline this feature exists to feed. The lossless-round-trip AC is unaffected (model items
+  untouched; only the lossy projection skips). The feature.md render-guard AC (#11) was extended with
+  a one-clause projection-symmetry note to keep the robustness contract complete (PO-owned artifact).

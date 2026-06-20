@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 1
-status: pending
+status: approved
 depends_on: []
 frontend_lane: N/A
 visual_references: []
@@ -154,3 +154,13 @@ records the released lineage; there is no in-feature producer this story waits o
 ## History
 
 - 2026-06-20 — created by frontend-architect (effort=1, depends on none)
+
+## Revisions
+
+- **2026-06-20 — product-owner (arbitrate).** Promoted `status: pending → approved`. **No contrarian
+  findings** on this story (stress-test verified clean: no test asserts the blue `#1e88e5` stroke —
+  `#1e88e5` appears only at `editor.js:328`/`:403` source, never in a test/`.spec.ts` — so the restyle
+  has zero test coupling). `depends_on: []` is correct (standalone restyle/relabel on the released w0
+  surface). Validate checklist present (6 items). No substantive change. Confirmed the model/wire
+  `type:"box"` literal + `api.onTool("box")` dispatch stay untouched (the rename is label-only) — the
+  no-regression anchor for already-persisted records.

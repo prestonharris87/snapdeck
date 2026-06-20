@@ -99,11 +99,15 @@ it restyles an existing primitive on an existing surface (the in-page editor too
   suite stays green (currently 121/121).
 - [ ] Existing **arrow**, **text-box** (draw / auto-fit / re-edit), **select/move/resize**,
   **undo/redo**, and the **visibility-toggle** behaviors are unaffected — no regression.
-- [ ] **Render-guard robustness preserved:** a hydrated `version:1` model containing a
-  hostile/malformed rectangle item (non-finite or ≤0 geometry, e.g.
+- [ ] **Render-guard robustness preserved (render AND projection symmetric):** a hydrated `version:1`
+  model containing a hostile/malformed rectangle item (non-finite or ≤0 geometry, e.g.
   `{type:"box", x:NaN, width:"120", height:Infinity}`) renders **without throwing or emitting a
   console error** — the bad item is skipped and well-formed rectangles still render (inherits the w0
-  fe-004 render-boundary guard at `renderBox` — verify it still covers the restyled rectangle).
+  fe-004 render-boundary guard at `renderBox`). The **lossy projection treats malformed geometry the
+  same way**: such an item is **not** emitted into the `/report/save` `annotations` (no coerced
+  `x:null` / `0`-dim garbage reaches the upstream report), so render and projection stay symmetric.
+  The lossless model round-trip is unaffected — the malformed item still survives in `model.items`
+  (only the lossy projection skips it). _(PO arbitration — contrarian INFO#1; wired in STORY-fe-002.)_
 
 ## In scope
 
@@ -255,7 +259,11 @@ branded/tokened animation?" — there isn't — not "does anything move?".
 
 ## Stories (populated by architects)
 
-- (none yet)
+- [ ] STORY-fe-001 — Restyle box render + draw-preview to red, relabel toolbar "Box" → "Rectangle" (frontend-engineer)
+- [ ] STORY-fe-002 — Add rectangle to `projectAnnotations` (+ finite/≤0 guard) + flip the frozen exclusion tests (frontend-engineer)
+- [ ] STORY-be-001 — Render the rectangle in the controller `report.md` human summary (`_render_markdown`) + first controller pytest (backend-engineer)
+- [ ] STORY-db-001 — DB sentinel (no schema/store change — rectangle rides opaque model + flat report) (database-engineer)
+- [ ] STORY-do-001 — DevOps sentinel (no manifest/CI/build change) (devops-engineer)
 
 ## Defects (populated as found)
 

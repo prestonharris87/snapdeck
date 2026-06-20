@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: backend-engineer
 author_architect: backend-architect
 effort: 1
-status: pending
+status: approved
 depends_on: [STORY-fe-002]
 diff_estimate: substantive
 files_modified: [controller/snapdeck_controller/reports.py, controller/tests/test_reports.py]
@@ -96,6 +96,10 @@ intentionally decoupled (the same decoupling already applied to the model type `
    `else`:
 
    ```python
+   # Coupling (PO arbitration): the "box" literal is the projected type STORY-fe-002's
+   # projectAnnotations emits. If that projected literal ever changes, this branch MUST change in
+   # lockstep or the rectangle falls through the raw-dict `else` below. (Test-unenforced across the
+   # JS↔Python seam — see ## Acknowledged Risk.)
    elif a.get("type") == "box":
        lines.append(f"- 🟥 ({a.get('x')},{a.get('y')}) {a.get('width')}×{a.get('height')}")
    ```
@@ -237,3 +241,34 @@ human-summary regression is invisible until someone eyeballs an old-controller r
 **Recommendation:** acknowledge; no code change required for this story. If the project ever gains a
 controller/extension compatibility note or changelog, mention that `report.md` rectangle rendering
 requires a controller at or past this story.
+
+## Acknowledged Risk
+
+**The projected `type:"box"` literal coupling (STORY-fe-002's emitter ⇄ this `_render_markdown`
+consumer) is test-unenforced across the JS↔Python seam.** This is the consumer half of the symmetric
+finding on STORY-fe-002 — see that story's `## Acknowledged Risk` for the full disposition. Summary:
+accepted because the projected literal is anchored to the back-compat-locked model/wire `type:"box"`
+(realistic rename probability doubly-low) and the failure mode is cosmetic (`report.json` is opaque
+and correct regardless; only the human `report.md` line degrades). Enforcement applied here: the
+one-line coupling comment on the box branch (above) + this story's existing
+`test_render_markdown_box_not_raw_dict_fallthrough` consumer guard. The shared-cross-language-fixture
+option is deferred with an explicit re-trigger (a future second box-shaped primitive) — see fe-002.
+
+## Revisions
+
+- **2026-06-20 — product-owner (arbitrate).** Promoted `status: pending → approved`. Cross-domain
+  contract reviewed and **affirmed**: this branch cases on `"box"`, identical to STORY-fe-002's
+  projected literal; `depends_on: [STORY-fe-002]` correctly declares the producer→consumer edge
+  (YAML-valid, unquoted). This reflects the arbitrated resolution of the BE architect's initial
+  `"rect"` lean → `"box"` — the right call (anchored to the immovable model/wire literal; holds the
+  system to two identifiers — wire `"box"` / display 🟥+"Rectangle" — not three).
+- **Contrarian CONCERN (literal coupling, consumer side) → ACKNOWLEDGED RISK + cheap enforcing pin.**
+  Added the coupling code comment on the box branch; kept the existing no-raw-dict-fallthrough guard
+  test as the consumer-side enforcement. See `## Acknowledged Risk` (cross-linked to fe-002's full
+  disposition). No behavior change.
+- **Contrarian INFO#2 (client/controller version skew) → ACCEPT_AS_RECOMMENDATION.** No code change:
+  the skew (newer extension → older controller renders the raw-dict dump in `report.md`) is graceful
+  degradation inherent to the independent-deploy split; `report.json` is opaque and correct regardless,
+  and it self-heals when the controller is updated past this story. **Standing guardrail:** if the
+  project ever adds a controller/extension compatibility note or CHANGELOG, record that `report.md`
+  rectangle rendering requires a controller at/past STORY-be-001.

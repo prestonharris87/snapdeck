@@ -3,12 +3,14 @@ type: feature
 slug: w2-screenshot-gallery
 wave: 2
 parent_epic: snapdeck-ux-improvements
-status: in-progress
+status: released
 created_at: 2026-06-18T00:00:00Z
 last_run_id: run-20260620-161818-88519
 depends_on: [w0-per-target-reports, w0-editor-foundation]
 frontend_lane: N/A
 visual_references: []
+released_at: 2026-06-20T18:53:28Z
+pr_url: https://github.com/prestonharris87/snapdeck/pull/3
 ---
 
 # Feature: Screenshot gallery — review, re-open / edit, delete
@@ -398,3 +400,4 @@ Domains an architect explicitly decided needed no work for this feature. The sen
 2026-06-20T18:32:03Z — orchestrator: status: 'planned' -> 'in-progress' (started via /mat_implement_feature (BOSS-mode, Wave-2 final))
 2026-06-20T18:48:07Z — orchestrator: status: 'in-progress' -> 'validated' (BOSS-mode freeze; 3 FE stories validated, node --test 144/144, Wave-2 ready)
 2026-06-20T18:51:12Z — orchestrator: status: 'validated' -> 'in-progress' (CORRECTION — BOSS-mode freeze keeps feature.md at in-progress; `validated` is not a legal FEATURE status and would break BOSS's in-progress->released stamp at merge. Freeze signaled by stories=validated + FEATURE_READY. Verified against _statuses.py: ('feature','released') predecessors = {in-progress} only.)
+2026-06-20T18:53:28Z — BOSS: status: 'in-progress' -> 'released' (PR #3) (Wave 2 (final) released via PR #3 (merge cd6c0cb); node --test 144/144 + controller pytest 5/5)

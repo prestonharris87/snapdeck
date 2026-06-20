@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 1
-status: validated
+status: released
 depends_on: []
 frontend_lane: N/A
 visual_references: []
@@ -155,6 +155,7 @@ records the released lineage; there is no in-feature producer this story waits o
 
 - 2026-06-20 — created by frontend-architect (effort=1, depends on none)
 - 2026-06-20T00:00:00Z — implemented (commit: bb61377)
+2026-06-20T18:53:28Z — BOSS: status: 'validated' -> 'released' (Released via Wave-2 PR #3 (cd6c0cb))
 
 ## Engineer Notes
 

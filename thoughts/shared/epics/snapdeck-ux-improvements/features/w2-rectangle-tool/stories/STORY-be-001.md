@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: backend-engineer
 author_architect: backend-architect
 effort: 1
-status: validated
+status: released
 depends_on: [STORY-fe-002]
 diff_estimate: substantive
 files_modified: [controller/snapdeck_controller/reports.py, controller/tests/test_reports.py]
@@ -206,6 +206,7 @@ n/a
   coupling comment to `_render_markdown`; created `controller/tests/test_reports.py` (5 pytest
   cases); fixed pre-existing Python 3.12+ curly-quote-as-delimiter syntax error in arrow/else
   branches (output unchanged); 5/5 pass, ruff clean; commit `3f3244a`.
+2026-06-20T18:53:28Z — BOSS: status: 'validated' -> 'released' (Released via Wave-2 PR #3 (cd6c0cb))
 
 ## Contrarian Findings
 

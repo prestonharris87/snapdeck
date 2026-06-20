@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: validated
+status: released
 depends_on: []
 diff_estimate: substantive
 frontend_lane: N/A
@@ -336,6 +336,7 @@ prose here, not a `depends_on` id (cross-feature ids must not appear in story
 - 2026-06-20T18:47:07Z — orchestrator — validate validated + honesty passed (BOSS-mode implement, Wave-2); node --test 144/144
 - 2026-06-20 — created by frontend-architect (effort=2, depends on none)
 - 2026-06-20T00:00:00Z — implemented (commit: 234c767); node --test 132/132 pass; all 8 new gallery tests green
+2026-06-20T18:53:29Z — BOSS: status: 'validated' -> 'released' (Released via Wave-2 PR #3 (cd6c0cb))
 
 ## Contrarian Findings
 

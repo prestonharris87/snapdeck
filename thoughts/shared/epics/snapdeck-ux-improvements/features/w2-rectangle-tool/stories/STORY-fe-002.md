@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: validated
+status: released
 depends_on: []
 frontend_lane: N/A
 visual_references: []
@@ -234,6 +234,7 @@ backend-architect's controller story declares `depends_on: [STORY-fe-002]` again
 - 2026-06-20 — created by frontend-architect (effort=2, depends on none; projected `type:"box"`
   ratified with backend-architect)
 - 2026-06-20T00:00:00Z — implemented (commit: bb61377)
+2026-06-20T18:53:28Z — BOSS: status: 'validated' -> 'released' (Released via Wave-2 PR #3 (cd6c0cb))
 
 ## Engineer Notes
 

@@ -1,0 +1,221 @@
+---
+type: story
+id: STORY-fe-003
+name: "Popup thumbnail grid + delete-confirm UI"
+domain: frontend
+parent_feature: w2-screenshot-gallery
+parent_epic: snapdeck-ux-improvements
+assignee: frontend-engineer
+author_architect: frontend-architect
+effort: 2
+status: pending
+depends_on: [STORY-fe-001, STORY-fe-002]
+diff_estimate: substantive
+frontend_lane: N/A
+visual_references: []
+created_at: 2026-06-20T16:46:00Z
+last_run_id: run-20260620-161818-88519
+---
+
+# Story: Popup thumbnail grid + delete-confirm UI
+
+## What we're doing
+
+Add the gallery surface to the popup (`extension/popup/popup.html` / `popup.js` /
+`popup.css`): below the existing note / Add / Save / Clear chrome, render the
+current target's report screenshots as a **thumbnail grid** (one tile per
+screenshot, in capture order). Clicking a tile re-opens that shot in the in-page
+editor (sends `REOPEN_SCREENSHOT`, then closes the popup so the overlay is usable);
+each tile has a **delete affordance gated behind an inline two-state confirm**
+(Delete → Confirm / Cancel) that, on confirm, removes the shot and updates the count
++ grid. A non-target / empty report renders an empty state. The grid consumes the
+three new background messages from STORY-fe-001 / STORY-fe-002 — it holds **no**
+business logic and **no** port (callers pass an index only).
+
+## What it should look like
+
+Per the feature.md ASCII wireframe (no ui-designer mockup —
+`skip_ui_designer: true`, `frontend_lane: N/A`; spec'd inline against the existing
+`.sd-*` class family). A new section appended **after** `#status`:
+
+```
+ │ [ ✓ Save report ]   [ Clear ]         │   ← existing chrome (unchanged)
+ │ <status line>                          │
+ │  Screenshots in this report            │   ← .sd-gallery-head
+ │  ┌──────┐ ┌──────┐ ┌──────┐            │
+ │  │thumb │ │thumb │ │thumb │  #N badge  │   ← .sd-thumb (button) + .sd-thumb-idx
+ │  └──────┘ └──────┘ └──────┘            │
+ │  [ Delete ]  [Delete] [Delete]         │   ← resting: .sd-del-btn
+ │  Delete? [Confirm] [Cancel]            │   ← confirm two-state (inline, per tile)
+ │                                         │
+ │  Empty: "No screenshots in this         │   ← .sd-empty (non-target / empty)
+ │          target's report yet."          │
+```
+
+### HTML (append after `#status`, `popup.html:23`)
+
+```html
+<div class="sd-gallery-head">Screenshots in this report</div>
+<div id="gallery" class="sd-gallery" role="list"></div>
+```
+
+### popup.js (additive — wire on open + after mutations)
+
+- **On open:** extend `refresh()` (`popup.js:13-17`) to also call
+  `refreshGallery()` → `send({type:"GET_REPORT_SCREENSHOTS"})` → `renderGallery(res.screenshots)`.
+- **`renderGallery(screenshots)`** — clear `#gallery`; if empty/undefined, render a
+  `.sd-empty` message; else append one `.sd-tile` per shot.
+- **Tile** — a `.sd-thumb` **button** wrapping `<img class="sd-thumb-img" src=shot.thumbnail alt="">`
+  + a `.sd-thumb-idx` `#${index+1}` badge; `aria-label="Re-open screenshot ${index+1}"`
+  (+ title from `shot.title`/`shot.url`). Click → `reopen(index)`.
+- **`reopen(index)`** — `const res = await send({type:"REOPEN_SCREENSHOT", index});`
+  if `res.error` → `setStatus(res.error,"err")` and **stay open**; else
+  `window.close()` (mirrors the Add-flow close, `popup.js:21-26`, so the overlay is
+  usable). The long-lived edit + re-save run in the SW after the popup closes.
+- **Delete affordance** — a per-tile `.sd-del` container with two render states:
+  - *resting:* a `Delete` button (`aria-label="Delete screenshot ${index+1}"`) →
+    on click, swap to the confirm state.
+  - *confirm:* a `Delete?` label + `Confirm` button + `Cancel` button. `Confirm` →
+    `confirmDelete(index)`; `Cancel` → restore the resting state (no mutation).
+- **`confirmDelete(index)`** — `const res = await send({type:"DELETE_SCREENSHOT", index});`
+  if `res.error` → `setStatus(res.error,"err")`; else `setCount(res.count)` and
+  `await refreshGallery()` — **re-fetch + re-render the whole grid** so the shifted
+  indices are recomputed (NEVER reuse a stale index after a splice).
+- **Keep Clear/Save in sync:** extend the existing `clear` (`popup.js:41-46`) and
+  `save`-success (`popup.js:32-35`) handlers to also call `renderGallery([])` so the
+  grid empties when the report is cleared/saved. (Additive — does not change their
+  released behavior.)
+
+### Labels — plain text, no symbol-icon chars
+
+The feature.md wireframe sketches `Confirm? ✓ ✕`, but the **shipped** labels are
+plain text — `Delete`, `Confirm`, `Cancel`, `#N` — per the no-emoji / no-symbol-icon
+convention for **new** labels (precedent: the released Box button chose a plain-text
+label, `editor.js:527`; the toolbar grip is a CSS affordance, not a glyph). Do
+**not** use `✓` / `✕` / `●` / arrows. (The released popup buttons `＋`/`✓` and the
+`▟` logo are pre-existing / brand and out of scope.) No inline `<svg>` icons.
+
+### CSS (`popup.css`, extend the `.sd-*` family — dark palette already in file)
+
+Responsive grid (`grid-template-columns: repeat(auto-fill, minmax(72px, 1fr))` or a
+fixed 2–3 col — engineer judgment), uniform tiles (`aspect-ratio` + `object-fit:
+cover`), reusing the existing tokens (`#2c2f3a` surface, `#3a3d4a` border, `#aac2dd`
+focus, `#e7e9ee` text, `#9aa0ad` muted). The destructive `Confirm` button gets a
+red-tinted border/text (anchor to the existing error token `#e88` /`#c0392b` family).
+Icon-only controls are avoided (all controls are text), and `.sd-thumb:focus-visible`
+must show a visible focus ring (keyboard-activatable per feature.md).
+
+## Existing behavior baseline
+
+- **Currently:** `popup.html:7-26` renders head (`▟` logo + title + `#count`),
+  note input, `＋ Add screenshot`, `✓ Save report` / `Clear`, and `#status`; there
+  is **no** gallery. `popup.js:13-48` wires `GET_STATE` refresh, `SET_NOTE` on note
+  change, Add (fire-and-forget + `window.close()`), Save, Clear. `popup.css:1-37`
+  defines the `.sd-*` dark theme.
+- **Dispatch path / call graph:** `$("...").addEventListener` → `send(msg)` =
+  `chrome.runtime.sendMessage` (`popup.js:4`) → SW `handle()` (`background.js:231`).
+  This story adds three consumers: `GET_REPORT_SCREENSHOTS` + `DELETE_SCREENSHOT`
+  (STORY-fe-001) and `REOPEN_SCREENSHOT` (STORY-fe-002).
+- **No-regression assertion:** the existing head / note / Add / Save / Clear markup
+  and their handlers remain functional and visually unchanged; the gallery is
+  **appended below** `#status` and never reflows the existing chrome. The Add flow
+  (`popup.js:21-26`) is untouched. The `send`/`setStatus`/`setCount` helpers
+  (`popup.js:3-11`) are reused, not rewritten.
+- **Dispatch contract preserved:** n/a — single UI lane (`frontend_lane: N/A`); not
+  a revamp twin. The grid consumes the new message contracts as defined by
+  fe-001/fe-002 (index-only payloads; the SW resolves the port internally).
+- **Explicitly changing:** append the gallery section (html), add
+  render/tile/delete-confirm/reopen logic + Clear/Save grid-sync (js), add
+  grid/tile/delete CSS (css).
+- **Verified:** 2026-06-20 — opened `popup.html`, `popup.js`, `popup.css`.
+
+## How we're doing it
+
+- **Files:** `extension/popup/popup.html`, `popup.js`, `popup.css` only. No build
+  step, no manifest change (popup already registered, `manifest.json:14-22`).
+- **Presentational only.** The popup holds no port and no report logic — it sends
+  index-only messages and renders the response. Re-fetch the grid after every
+  mutation (delete) rather than mutating the DOM in place, so indices stay correct.
+- **Re-open closes the popup on success, surfaces error on failure.** `reopen()`
+  awaits the `REOPEN_SCREENSHOT` result: the SW's pre-flight PING (fe-002) returns
+  quickly, so a missing content-script host returns `{error}` → the popup shows it
+  and stays open; success returns `{ok:true, opening:true}` → `window.close()`.
+- **Accessibility:** every tile button and delete/confirm/cancel button has an
+  `aria-label`; the thumbnail `<img>` is decorative (`alt=""`) because the wrapping
+  button carries the label; `.sd-thumb` is keyboard-activatable with a visible
+  `:focus-visible` ring.
+- **Dev-server / extension-load gotcha (per onboarding/frontend.md):** to verify
+  visual output, **confirm the unpacked extension + a localhost dev target are
+  already loaded in Chrome** (browser-tester drives them) — do **not** start a
+  long-lived dev/browser process under a Bash background call (it gets killed). Drive
+  verification through the `bt` teammate (see Validation).
+
+## How we validate it was done correctly
+
+- [ ] On popup open against a target whose report has N screenshots, the grid
+  renders exactly N tiles in capture order, each with a thumbnail, a `#index+1`
+  badge, and a `Delete` button.
+- [ ] The tile thumbnail shows the screenshot's `annotated` image (or `original`
+  when it has no annotations) — i.e. it renders the `thumbnail` field from
+  `GET_REPORT_SCREENSHOTS`.
+- [ ] On a non-target tab or an empty report, the grid shows the `.sd-empty`
+  message ("No screenshots in this target's report yet.") and zero tiles.
+- [ ] Clicking a tile sends `REOPEN_SCREENSHOT {index}`; on success the popup
+  closes; on `{error}` the popup surfaces the error in `#status` and stays open.
+- [ ] `Delete` flips the tile to the inline confirm state (`Delete?` + `Confirm` +
+  `Cancel`); `Cancel` restores the resting state and **sends no message**.
+- [ ] `Confirm` sends `DELETE_SCREENSHOT {index}`, then updates `#count` and
+  re-fetches + re-renders the grid (the removed tile is gone; remaining indices
+  recompute — e.g. former `#3` becomes `#2`).
+- [ ] After `Clear` or a successful `Save`, the grid empties (`renderGallery([])`).
+- [ ] No emoji / symbol-icon char / inline `<svg>` in new markup; all new labels are
+  plain text; decorative `<img>` has `alt=""`; every interactive control has an
+  accessible label; `.sd-thumb` shows a visible focus ring.
+- [ ] Existing head / note / Add / Save / Clear chrome is visually + behaviorally
+  unchanged.
+- [ ] **(browser-tester smoke — required for this UI story)** `bt` loads the popup
+  against a seeded `report:<port>` (≥2 shots, ≥1 annotated): confirm tile count +
+  order + thumbnails, click → re-open message + popup close, delete-confirm
+  two-state + post-delete re-render, empty-state on a non-target; report any
+  console errors; screenshot the grid + the confirm state. Reference the `bt`
+  report in `## Engineer Notes` before landing.
+
+## Motion contract
+
+n/a — `frontend_lane: N/A`. Snapdeck's popup is plain HTML/CSS with no
+component-library / design-token motion catalog. The thumbnail grid and the
+inline delete-confirm two-state are **instantaneous DOM updates** (a `textContent`
+swap for the confirm flip; a re-render after delete) with no transition tokens. No
+animation is introduced, so reduced-motion is honored by construction. Consistent
+with feature.md § Motion E2E (`n/a`) and every released sibling in this epic.
+
+## Unit tests
+
+No `node --test` lane — the popup is DOM/`chrome.runtime`-bound with no existing
+headless harness, and extracting a "pure" helper purely to add a node test would be
+a fake abstraction (cf. the w1-text-box-autofit lesson). The grid render, the
+delete-confirm two-state, the re-open-and-close flow, and the empty state are
+verified through the **browser-tester Playwright E2E lane** (feature.md E2E specs
+"Gallery renders N thumbnails; non-target shows the empty state" and the
+delete/confirm/cancel spec) plus the mandatory `bt` smoke above. The message
+*contracts* the popup depends on are unit-tested in STORY-fe-001
+(`background.gallery.test.mjs`) and STORY-fe-002 (`background.reopen.test.mjs`).
+
+## Dependencies
+
+- **STORY-fe-001** — consumes `GET_REPORT_SCREENSHOTS` (grid render + empty state)
+  and `DELETE_SCREENSHOT` (delete-confirm).
+- **STORY-fe-002** — consumes `REOPEN_SCREENSHOT` (tile click → re-open + close;
+  the `{error}` vs `{ok:true,opening:true}` contract drives the surface-error-vs-
+  close branch).
+
+## Cross-domain contract
+
+- **devops-architect:** popup is already registered (`manifest.json:14-22`); no
+  manifest / build change. (devops sentinel — peer-confirmed Phase 5.)
+- **backend / database architects:** no controller or server-side DB surface — the
+  popup is pure presentation over the FE-owned SW messages. (BE + DB sentinel.)
+
+## History
+
+- 2026-06-20 — created by frontend-architect (effort=2, depends on STORY-fe-001, STORY-fe-002)

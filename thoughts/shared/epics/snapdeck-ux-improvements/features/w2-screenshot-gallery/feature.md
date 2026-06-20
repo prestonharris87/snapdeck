@@ -334,10 +334,12 @@ sibling in this epic (all `frontend_lane: N/A`, all `Motion E2E: n/a`).
 
 ## Stories (populated by architects)
 
-- [ ] STORY-fe-001 — <summary> (frontend-engineer)
+- [ ] STORY-fe-001 — Gallery fetch + delete report-screenshot handlers + GC (frontend-engineer)
+- [ ] STORY-fe-002 — Re-open + preserve-from-record re-save handler (frontend-engineer)
+- [ ] STORY-fe-003 — Popup thumbnail grid + delete-confirm UI (frontend-engineer)
 - [ ] STORY-be-001 — <summary> (backend-engineer)
-- [ ] STORY-db-001 — <summary> (database-engineer)
-- [ ] STORY-do-001 — <summary> (devops-engineer)
+- [ ] STORY-db-001 — DB sentinel: no server-side DB change; gallery rides released `report:<port>` IndexedDB (FE/extension-owned) [sentinel] (database-engineer)
+- [ ] STORY-do-001 — DevOps sentinel: no manifest/build/CI change; gallery rides already-permissioned popup/background/tabs/storage seams [sentinel] (devops-engineer)
 
 ## Defects (populated as found)
 

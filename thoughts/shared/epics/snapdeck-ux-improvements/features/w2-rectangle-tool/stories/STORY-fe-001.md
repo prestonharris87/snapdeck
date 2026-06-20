@@ -155,6 +155,34 @@ records the released lineage; there is no in-feature producer this story waits o
 
 - 2026-06-20 — created by frontend-architect (effort=1, depends on none)
 
+## Security Review
+
+**Reviewer:** security-architect · **Date:** 2026-06-20 · **Verdict:** INFO (clean — no change required)
+
+STRIDE pass over this story (restyle + relabel). All findings INFO; nothing to gate, no
+`STORY-sec` warranted.
+
+- **Tampering / Injection — N/A.** The three edits change only hardcoded literals: two stroke colours
+  (`#1e88e5`→`#e53935`) and a button label/`title` string. None of the new values is interpolated from
+  page, model, or network data — they are constant string literals in `editor.js`. No data-flow sink is
+  added or widened.
+- **XSS — N/A (not manufactured).** The rectangle is painted via `Konva.Rect` on a canvas and the label
+  is set as a plain-text button — neither path touches `innerHTML`. Consistent with the standing lesson:
+  Konva/canvas render + textContent labels are not a DOM-XSS vector; the restyle introduces no new sink.
+- **EoP — N/A.** No auth, permission, manifest, host-guard, or endpoint change (out of scope per
+  feature.md; confirmed against the do-001 sentinel — no manifest/permission widening, so the "permission
+  additions are a real cost" check passes trivially).
+- **DoS / render-robustness — preserved.** This story does not touch `renderBox`'s finite/`≤0` geometry
+  guard (`editor.js:324-325`, grounded 2026-06-20) — the restyled rectangle inherits the w0 fe-004
+  render-boundary guard unchanged (no throw / no console error on a malformed hydrated box). The model
+  surface (isolated-world `content_scripts[1]`, no `"world"` key — grounded against `manifest.json`) is
+  not page-writable, so even that path is reachable only via the extension's own stored model.
+
+**PO disposition:** ACCEPT_AS_RECOMMENDATION — clean INFO pass; the three edits change only constant string literals (two stroke colours + a button label/title), interpolating no page/model/network data, so no data-flow sink is added or widened, Konva-canvas + `textContent` are not XSS vectors, and `renderBox`'s finite/≤0 render guard is untouched. No gating change; no STORY-sec.
+
+Disposition: affirm as-is. Default checklist for this story is overwhelmingly N/A (no HTTP endpoint, no
+entity table, not multi-tenant, no new permission); recorded so the PO sees the checklist was applied.
+
 ## Revisions
 
 - **2026-06-20 — product-owner (arbitrate).** Promoted `status: pending → approved`. **No contrarian

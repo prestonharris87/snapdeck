@@ -254,6 +254,54 @@ one-line coupling comment on the box branch (above) + this story's existing
 `test_render_markdown_box_not_raw_dict_fallthrough` consumer guard. The shared-cross-language-fixture
 option is deferred with an explicit re-trigger (a future second box-shaped primitive) — see fe-002.
 
+## Security Review
+
+**Reviewer:** security-architect · **Date:** 2026-06-20 · **Verdict:** INFO (clean — no change required)
+
+STRIDE pass on the controller `_render_markdown` box branch, grounded against
+`controller/snapdeck_controller/reports.py` (`_render_markdown` lines 184-250, `save_report` 108-181,
+read 2026-06-20). All findings INFO.
+
+- **Injection (the headline question) — no new vector.** The planned branch is
+  `f"- 🟥 ({a.get('x')},{a.get('y')}) {a.get('width')}×{a.get('height')}"`. Two reasons this is safe:
+  1. **Not format-string injection.** Python f-string substitution fills the `{...}` placeholders by
+     `str()`-coercing the value; the inserted value is **not** re-parsed as a format spec, so there is
+     no `%n`/`{0.__class__}`-style escape — unlike `str.format(user_input)` or `%`-logging. The
+     literal format template is fixed in source.
+  2. **Numeric-only fields, and `id` is not rendered.** The branch renders only `x/y/width/height` —
+     `Math.round`ed ints from the projection (fe-002) — and deliberately omits `id`. So the rectangle
+     introduces **no new arbitrary-string sink** into `report.md`. The only such sink on this surface
+     remains the **pre-existing** `text` annotation (`reports.py:222` renders `a.get('text')`, a genuine
+     user string) plus console messages / network URLs — all unchanged by this feature. The rectangle is
+     strictly narrower than what already ships.
+- **Trust-upstream is the correct call here.** Using bare `.get()` accessors with no re-validation /
+  re-rounding matches the sibling `text`/`arrow` branches. The annotation reaching the controller is the
+  projection output (fe-002's finite/`≤0` guard already filtered malformed boxes upstream). Adding
+  divergent per-field validation to *only* the box branch would be an inconsistency, not a safety gain —
+  agree with the story's explicit "do NOT add per-field validation" directive.
+- **Forward note (pre-existing, OUT OF SCOPE for this feature — recorded, not a finding):** `report.md`
+  is consumed downstream by the report→defects / AI-resolver pipeline, i.e. it is an LLM-prompt surface.
+  The arbitrary-string→`report.md` path (the `text` annotation, console output, network URLs) is a
+  pre-existing content-injection-adjacent surface that this feature **does not widen** (rectangle =
+  numeric-only). Do **not** attempt to remediate that pre-existing surface inside the rectangle branch —
+  the rectangle is the wrong lever. If the project ever wants to harden the AI-resolver prompt surface,
+  that is a separate, broader story against the `text`/console/network sinks, not this one. No
+  `STORY-sec` minted against this feature.
+- **AuthN/AuthZ — N/A.** This story edits an internal render helper, not an endpoint; the enclosing
+  localhost-only `/report/save` surface is unchanged (no auth added/removed/modified). EoP N/A.
+- **Repudiation / audit — N/A.** No entity table; `report.json` already records `git.branch`/`git.sha`/
+  `created_at` (`reports.py:163-171`). Flat-file output, no DB (db-001 sentinel). No audit-column
+  surface exists to extend.
+- **Version-skew INFO (contrarian Finding 2) — concur.** A newer extension emitting `box` to an older
+  controller renders the raw-dict dump in `report.md`; graceful degradation, `report.json` stays correct.
+  Not a security issue (no escalation, no info leak) — affirm the PO disposition.
+
+Disposition: affirm as-is. Clean INFO pass — expected for a localhost-only flat-file render helper. No
+`STORY-sec`. Default checklist recorded N/A (no endpoint/authn/authz/CSRF/CORS/rate-limit; no entity
+table → no audit columns; not multi-tenant; no parameterized-query surface — flat-file write only).
+
+**PO disposition:** ACCEPT_AS_RECOMMENDATION — injection is a non-issue (fixed f-string template, `str()`-coercion is NOT format-spec re-parse, numeric-only fields, `id` deliberately unrendered → no new arbitrary-string sink in `report.md`); trust-upstream matches the sibling text/arrow branches and the fe-002 guard already filters malformed boxes. The pre-existing `report.md`→AI-resolver LLM-prompt surface (the `text`/console/network sinks) is NOT widened by the numeric rectangle and is explicitly OUT OF SCOPE — do NOT remediate inside the rectangle branch (wrong lever); if ever pursued it is a separate, broader story against those sinks (a BOSS/epic-backlog call, not this feature). Version-skew INFO concurs with be-001's INFO#2 disposition. No STORY-sec, no AC change.
+
 ## Revisions
 
 - **2026-06-20 — product-owner (arbitrate).** Promoted `status: pending → approved`. Cross-domain

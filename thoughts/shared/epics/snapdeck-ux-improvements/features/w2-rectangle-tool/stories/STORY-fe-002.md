@@ -310,6 +310,49 @@ controller's raw-dict catch-all in `report.md`.
   diverge from the model/wire literal and the anchor that makes this risk low disappears. Until then,
   the comment + decision-memo record is the proportionate disposition.
 
+## Security Review
+
+**Reviewer:** security-architect · **Date:** 2026-06-20 · **Verdict:** INFO / LOW (clean — no change
+required; I endorse the already-planned guard)
+
+This is the one story in the feature with a real information-flow delta (rectangle geometry now reaches
+the upstream `/report/save` projection). STRIDE pass, all findings INFO/LOW:
+
+- **Information disclosure (projection → upstream) — INTENDED, no new disclosure class.** The box branch
+  emits `{id, type:"box", x, y, width, height}` — `Math.round`ed numeric geometry plus a uid. This is
+  strictly *narrower* than data already projected: the released `arrow` branch projects `from`/`to`
+  coordinate pairs and the `text` branch projects a full **user-authored string** (`text`). The rectangle
+  carries no PII, token, credential, internal URL, or free text. The flow is the user's own annotation on
+  their own screenshot → their own localhost controller. Not multi-tenant, no cross-origin. Affirm as
+  INFO security-positive — the projection addition is intended (rectangles ARE report annotations) and
+  adds no disclosure beyond the existing arrow/text geometry. (Grounded: `editor-model.js:45-63` +
+  `background.js:315-323` `/report/save` assembler, read 2026-06-20.)
+- **DoS — closed by the planned guard; I endorse it.** The finite/`≤0` projection guard this story adds
+  (the contrarian INFO#1 the PO promoted) mirrors `renderBox:324-325` and is the correct
+  defense-in-depth: it stops a malformed hydrated box from emitting coerced garbage (`Math.round(NaN)→
+  null`, `0`-dim) into `/report/save`, keeping render and projection **symmetric**. No text on a
+  rectangle → no auto-fit measurement loop (the w1 slow-wrap DoS axis is N/A here). Projection is
+  O(items), bounded by user draw gestures. Confirmed this story does **not** fork the shared `render()`
+  path, so the inherited RENDER_ITEM_CAP / render-boundary caps stay in force (feature directive #7).
+- **Tampering — LOW defense-in-depth, already covered.** The editor `model` is built in the
+  isolated-world `content_scripts[1]` entry (no `"world"` key — only `capture.js` is MAIN-world/
+  page-reachable; grounded against `manifest.json`), and there is **no `externally_connectable`**, so a
+  hostile web page cannot write the model or reach the extension's message API. The "malformed/hostile
+  box" scenario is therefore reachable only via the extension's own stored model or a future bug — which
+  is exactly the residual the promoted finite/`≤0` guard now neutralises on the projection side. No
+  further action.
+- **Note on the test-unenforced `"box"` literal coupling (this story's `## Acknowledged Risk`):** this is
+  a contract-decay/maintainability risk, **not** a security finding — the failure mode is a cosmetic
+  `report.md` line, `report.json` stays opaque and correct. I concur with the PO disposition (two-sided
+  coupling comment now; shared fixture deferred to the second-box-primitive re-trigger). No security
+  escalation.
+
+Disposition: affirm. No `STORY-sec` minted — the only defensive change worth making (the projection
+geometry guard) is already in-scope on this story. Default checklist mostly N/A (no endpoint, no entity
+table, not multi-tenant); recorded so the PO sees it was applied.
+
+**PO disposition:** ACCEPT_AS_RECOMMENDATION — the projection info-flow is intended and security-positive (numeric `{x,y,width,height}` + uid is strictly narrower than the already-projected arrow coords / full user `text` string; localhost-only, single-user, not multi-tenant), and the finite/≤0 projection guard security endorses was ALREADY PROMOTE_TO_AC during arbitration (contrarian INFO#1) — no further change. The test-unenforced `"box"` literal coupling security flags is a maintainability/contract-decay risk, not security (cosmetic `report.md` failure mode; `report.json` opaque+correct), already dispositioned in this story's `## Acknowledged Risk`. No STORY-sec.
+
 ## Revisions
 
 - **2026-06-20 — product-owner (arbitrate).** Promoted `status: pending → approved`. Cross-domain

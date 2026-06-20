@@ -3,9 +3,9 @@ type: feature
 slug: w2-rectangle-tool
 wave: 2
 parent_epic: snapdeck-ux-improvements
-status: planning
+status: planned
 created_at: 2026-06-18T00:00:00Z
-last_run_id: run-20260619-021434-24507
+last_run_id: run-20260620-161821-90174
 depends_on: [w0-editor-foundation, w1-text-box-autofit]
 frontend_lane: N/A
 visual_references: []
@@ -322,3 +322,10 @@ ARCHITECT NOTES (carried forward from scope.md "Open design decisions" + "Risk s
    shared render-guard still applies. Security-architect Phase 7 should confirm the projection
    addition is intended and the render-guard covers the restyled rectangle.
 -->
+
+## No-work domains
+
+Domains an architect explicitly decided needed no work for this feature. The sentinel stories that recorded these decisions were pruned at the end of `/mat_write_feature`; the rationale is preserved here.
+
+- **database** — **No database changes required for this feature.**
+- **devops** — **No devops changes are required for `w2-rectangle-tool`.** This is a sentinel story documenting

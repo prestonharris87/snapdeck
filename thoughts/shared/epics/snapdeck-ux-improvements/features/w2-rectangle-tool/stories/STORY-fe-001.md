@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 1
-status: approved
+status: in-progress
 depends_on: []
 frontend_lane: N/A
 visual_references: []
@@ -154,6 +154,19 @@ records the released lineage; there is no in-feature producer this story waits o
 ## History
 
 - 2026-06-20 — created by frontend-architect (effort=1, depends on none)
+- 2026-06-20T00:00:00Z — implemented (commit: bb61377)
+
+## Engineer Notes
+
+**Three one-line edits in `editor.js` exactly as specified:**
+1. `renderBox` stroke `#1e88e5` → `#e53935` (line 328).
+2. `previewStroke` ternary collapsed to `var previewStroke = "#e53935";` — both text and box draw-preview now use annotation red; `previewName` ternary on the line above left intact (fe-001 story approved collapsing the constant).
+3. Toolbar btn `"Box"` / `"Draw a box (drag)"` → `"Rectangle"` / `"Draw a rectangle (drag)"`. Internal variable name `box`, tool key `"box"`, `setTool(["box",box])` tuple, and `box.onclick→api.onTool("box")` all unchanged.
+
+Also updated stale inline comment at `editor.js:485` (`// box excluded` → `// arrow/text byte-frozen; box projected (w2 rectangle, fe-002)`) as a consistency fix — this is the call-site comment, not a separate AC item.
+
+**Smoke verification deferred — browser-tester Phase 5 smoke (extension requires Chrome).**
+No `node --test` changes from this story; the full suite runs 124/124 green post-commit (counts from sibling STORY-fe-002 additions). `extension/content/editor-model.js` and `extension/editor.model.test.mjs` were NOT touched by this story (owned by STORY-fe-002).
 
 ## Security Review
 

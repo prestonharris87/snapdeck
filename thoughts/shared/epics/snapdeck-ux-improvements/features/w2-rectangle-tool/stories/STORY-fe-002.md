@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: approved
+status: in-progress
 depends_on: []
 frontend_lane: N/A
 visual_references: []
@@ -233,6 +233,28 @@ backend-architect's controller story declares `depends_on: [STORY-fe-002]` again
 
 - 2026-06-20 — created by frontend-architect (effort=2, depends on none; projected `type:"box"`
   ratified with backend-architect)
+- 2026-06-20T00:00:00Z — implemented (commit: bb61377)
+
+## Engineer Notes
+
+**`extension/content/editor-model.js` changes:**
+- Module header doc updated: removed "box excluded" claim; now documents `box → {id,type:"box",x,y,width,height}` (w2).
+- `projectAnnotations` JSDoc updated to reflect three-branch output (arrow/text byte-frozen, box projected w2).
+- Added `else if (m.type === "box")` branch with inline `fin()` finite-number guard (mirrors `renderBox:324-325`), `≤0` dimension guard, and the PO-required coupling comment naming `reports.py _render_markdown`.
+- Arrow/text branches: zero bytes changed (byte-identity preserved).
+
+**`extension/editor.model.test.mjs` changes:**
+- Section comment updated: added "arrow/text byte-frozen; box projected (w2 rectangle, fe-002)".
+- Flipped `"projectAnnotations excludes box items (never projected)"` → `"projectAnnotations projects box items (w2 rectangle)"`: asserts `result.length === 3`, `result[1]` deepEquals the box entry, arrow/text unchanged.
+- Flipped `"projectAnnotations returns empty array for box-only model"` → `"projectAnnotations projects a box-only model"`: asserts `[boxItem]` projects to `[{id:"b1",type:"box",x:300,y:80,width:160,height:90}]`.
+- Added `"projectAnnotations Math.rounds box geometry"` (fractional input → rounded output).
+- Added `"projectAnnotations skips a non-finite/≤0 box (render↔projection symmetry)"` (NaN x, string width, Infinity height → absent; well-formed boxItem present).
+- Added `"projectAnnotations skips a ≤0-dimension box"` (zero height / zero width → empty projection).
+- All pre-existing arrow/text byte-frozen tests, serialize/deserialize round-trip tests, and opaque-subtype tests stay green.
+
+**Test tally: 124/124 passing (was 121 pre-feature; +3 new tests from this story, 2 flipped).**
+
+**Smoke verification deferred — this story is a pure data-transform (`node --test` is authoritative). Browser-tester Phase 5 smoke will exercise the full FE→/report/save pipeline.** No browser interaction needed to verify `projectAnnotations` correctness.
 
 ## Contrarian Findings
 

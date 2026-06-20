@@ -292,3 +292,52 @@ a fe-001-local change, no fe-003 contract impact. Recorded so the assumption is 
 not silent.
 
 **Status:** pending → approved.
+
+## Security Review
+
+_security-architect, Phase 7 STRIDE, 2026-06-20. The popup is the only UI surface this
+feature adds; reviewed for output-encoding / DOM-XSS sinks._
+
+### Finding S1 — No new DOM-XSS sink — CONFIRMED clean
+
+**Severity:** info (security-positive)
+
+**Threat (Information disclosure / script injection):** the grid renders stored screenshot
+fields (`thumbnail`, `url`, `title`, `#N`) that ultimately trace to capture-time page data.
+If any reached an `innerHTML`/raw-HTML sink it would be an XSS vector.
+
+**Verification (against the story's spec):**
+- **Thumbnail** is `<img class="sd-thumb-img" src=shot.thumbnail alt="">` (lines 72-73) —
+  `shot.thumbnail` is a stored base64 **PNG data-URL** (`annotated || original`,
+  fe-001), set as the `src` **attribute/property**, not parsed as HTML. A data-URL in
+  `img@src` is inert (no script execution; `javascript:` doesn't execute in `img@src`
+  regardless). ✓
+- **`#N` badge** is the array index rendered as `textContent` (line 75) — auto-escaped. ✓
+- **`title` / `aria-label`** from `shot.title` / `shot.url` are set as
+  attributes/properties (lines 74-75), not HTML. Even a hostile `url` like
+  `javascript:…` is inert in a `title=` attribute (never navigated to, never an `href`).
+- **Re-open** is canvas (Konva, in the released editor) — no DOM-HTML path.
+- No `innerHTML` / `insertAdjacentHTML` / raw-HTML / template-injection sink is specified;
+  all new labels are plain text (lines 96-103). ✓
+
+**Verdict:** **no new DOM-XSS sink.** Output encoding is in effect via `textContent` +
+attribute/property writes. **Validator/engineer must NOT introduce `innerHTML`** when
+building tiles — assemble via `createElement` + `textContent` + `img.src` (as specified).
+
+### Finding S2 — `GET_REPORT_SCREENSHOTS` ships full-res PNGs to a small popup — LOW, accept
+
+**Severity:** low (DoS — local, accept-risk; already dispositioned by PO via fe-003 Finding 2)
+
+The grid mounts the full-resolution `annotated || original` base64 PNG per shot, CSS-scaled
+in a ~280px popup (this story's Finding 2). A large/high-DPI report ships tens of MB in one
+`sendMessage` and mounts many full-res `<img>`. **Not externally reachable** (local store,
+not page-writable; no `externally_connectable`) and bounded by the user's own capture count
+→ a latency/jank concern, not a security DoS. PO already accepted for v1 with a named
+re-trigger (an `OffscreenCanvas` downscale in fe-001's projection). I concur — **acknowledge**,
+no change.
+
+### Default-checklist N/A dispositions
+
+Presentation-only popup, no server/HTTP surface: **authn/authz/CSRF/CORS/rate-limit** N/A;
+**secrets** none; **injection** none (no query construction); **multi-tenant** N/A. The one
+applicable item — **output encoding** — is confirmed in effect (S1).

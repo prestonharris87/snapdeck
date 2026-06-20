@@ -445,3 +445,81 @@ narrows the *user-visible* corruption window (a dropped delete is a re-fetchable
 blip, not a Frankenstein record). Recorded; no change.
 
 **Status:** pending → approved.
+
+## Security Review
+
+_security-architect, Phase 7 STRIDE, 2026-06-20. Verified against RELEASED `background.js`
++ `manifest.json` on disk. This story owns the two new SW handlers + the stable-identity
+projection that fe-002 also addresses by._
+
+### Finding S1 — `GET_REPORT_SCREENSHOTS` / `DELETE_SCREENSHOT` entry-point hygiene — CLEAN
+
+**Severity:** info (security-positive)
+
+**Threat (STRIDE — Spoofing / Elevation / cross-port Information disclosure):** new SW
+message handlers that read/mutate the local store could leak or corrupt another port's
+report, or be reachable from a hostile page.
+
+**Verification:**
+- **No web reachability:** the manifest has **no `externally_connectable`**
+  (`manifest.json`, whole file), so a web page cannot call `chrome.runtime.sendMessage`
+  at all — the only caller is the extension's own popup. Spoofing/CSRF on the message API
+  is **N/A** by construction.
+- **Port resolved internally, never from `msg`:** both handlers derive the port via
+  `currentTargetPort()` (the boundary-anchored localhost gate `/^http:\/\/(localhost|
+  127\.0\.0\.1)(:|\/|$)/`, `background.js:81`) — the same SSOT the released read/write
+  paths use (write-key ≡ read-key). Callers pass `sid` only. ✓
+- **Forged / foreign `sid` is a fail-safe no-op, NOT a cross-port write:**
+  `DELETE_SCREENSHOT` matches by `indexOfScreenshotId(r, msg.sid)` against the **current
+  target's** freshly-read report (this story, line 111); a `sid` from another port (or
+  already deleted) → -1 → `{error}`, **no mutation** (line 113). A delete with target A
+  active resolves port A internally, so a B-owned `sid` simply won't match A's report. ✓
+  Two-port isolation confirmed.
+- **Injection:** `sid` is used only for string-equality `findIndex` (lines 92-94), never as
+  an IDB key or in `eval`; the IDB key is `report:${int port}` from the gated resolver. No
+  injection vector. ✓
+- **No new permission / no new top-level listener** (additive `case`s on the existing
+  `handle()` switch + additive `idbDelete`/`deleteReport`). EoP surface unchanged. ✓
+
+### Finding S2 — `sid` derivation (`captured_at` + `original` fingerprint) collision/spoofing — LOW, accept
+
+**Severity:** low (defense-in-depth; accept-risk)
+
+**Threat (Spoofing / Tampering within a single port's report):** `screenshotId(s)` =
+`` `${s.captured_at}|${orig.length}:${orig.slice(-24)}` `` (lines 82-88). A *collision*
+(two distinct records resolving to the same `sid`) would let a delete/re-save match the
+wrong sibling.
+
+**Assessment:** a collision requires two genuinely-distinct captures in the **same port's**
+report to share an ms-resolution ISO `captured_at` **and** identical `original` byte-length
+**and** identical trailing 24 base64 chars — effectively impossible for distinct PNG
+captures, and there is **no external path to plant a colliding `sid`** (it is computed
+SW-side from stored fields; the popup only echoes back the `sid` it received). The
+architect already notes "engineer may pick a stronger deterministic fingerprint" (line 84)
+— a full-`original` hash would make collision cryptographically negligible, but the current
+fingerprint is sufficient for a single-user local tool with small reports.
+
+**Recommendation:** **acknowledge** — no STORY-sec. If the engineer wants belt-and-suspenders,
+fingerprint over the full `original` rather than `length + last-24`; not required.
+
+### Finding S3 — Hard-delete + key-removal GC (no soft-delete) — N/A by data model
+
+**Severity:** info
+
+`DELETE_SCREENSHOT` does a hard `splice` and removes the `report:<port>` key on
+delete-to-empty (lines 115-120). The default-checklist "soft-delete" item is **N/A** here:
+the `report:<port>` store is an *ephemeral in-progress* local report, not a server entity
+table with audit columns, and scope §4 explicitly wants Delete to be the GC home (bound the
+PNG/keyspace bloat). The destructive action is gated behind the fe-003 confirm step. Correct
+pattern for this data model. (Per fe-001 Finding 2 / PO revision: the GC bounds the
+PNG/payload bloat and the empty-key on delete-to-empty, but Save/Clear still leave empty
+records — bounded, harmless, out of scope; do not over-claim full keyspace GC.)
+
+### Default-checklist N/A dispositions (recorded so PO sees the checklist was applied)
+
+Local no-server MV3-extension feature → most items N/A: **authn/authz** = the intrinsic
+localhost host-guard in `currentTargetPort()` (`background.js:81`), reused unchanged (no
+HTTP endpoint, no login); **secrets** none; **audit columns** N/A (no server entity table);
+**rate limiting / CSRF / CORS** N/A (not externally_connectable, no server change, local
+single-user); **injection** none (string-equality `sid`, int port key); **multi-tenant
+isolation** → analog is two-port isolation, confirmed (S1).

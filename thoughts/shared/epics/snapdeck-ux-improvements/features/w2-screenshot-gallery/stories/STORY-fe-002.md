@@ -466,3 +466,104 @@ The residual (two different targets both holding a shot with identical `captured
 focus-close of the popup already mitigates the trigger. Recorded; no further change.
 
 **Status:** pending → approved.
+
+## Security Review
+
+_security-architect, Phase 7 STRIDE, 2026-06-20. Verified end-to-end against RELEASED
+code on disk (`editor.js`, `editor-model.js`, `manifest.json`, `background.js`) — file:line
+cited. This story is the consumer that `w0-editor-foundation` STORY-fe-004 (render guard) and
+`w1-text-box-autofit` STORY-fe-002 / DEFECT-001 r2 **forward-flagged** as "the first feature
+to re-open ARBITRARY stored models through the render boundary." This is the close-out._
+
+### Finding S1 — Bounded arbitrary-model re-open (THE load-bearing verdict) — CONFIRMED bounded
+
+**Severity:** info (security-positive — affirms an inherited control; no change required)
+
+**Threat (STRIDE — Denial of Service / resource exhaustion):** re-opening a maliciously-
+crafted or corrupted stored `model` (arrow + box + text + rectangle, with numerically-hostile
+geometry `NaN`/`Infinity`/`1e308`/wrong-type, oversized item count, multi-megabyte text)
+could throw, hang, or spew `console.error` if the gallery re-open path weakened or bypassed
+the released render guards.
+
+**Verification (RELEASED code, end-to-end trace):**
+- Re-open sends `{ type:"ANNOTATE", image: shot.original, model: shot.model }` **verbatim**
+  (this story, line 72) — no SW-side pre-process/sanitize/reshape — into the **same** seam
+  `addScreenshot` already uses (`background.js:278`). → `editor.js` isolated-world listener
+  (`editor.js:14`) → `openEditor(image, model)` (`:16`) → `deserializeModel` (`:165` →
+  `editor-model.js:86-95`, opaque pass-through, returns `[]` for a non-v1 envelope, **never
+  throws**) → guarded `render()` (`editor.js:176-189`).
+- **Item-count cap:** `render()` slices `model.slice(0, RENDER_ITEM_CAP)` with
+  `RENDER_ITEM_CAP = 500` (`editor.js:179, :192`). An oversized item count is bounded at the
+  canvas. ✓
+- **Numerically-hostile geometry:** `renderArrow` skips non-finite (`editor.js:223`);
+  `renderText` skips non-finite or `≤0` width/height (`:253-254`); `renderBox` skips
+  non-finite or `≤0` (`:324-325`). `NaN`/`Infinity`/`1e308`/wrong-typed coords → item
+  skipped, no throw. ✓
+- **Oversized text:** capped to `RENDER_TEXT_CAP = 10000` chars **before any measurement**
+  (`editor.js:256, :193`); auto-fit is bounded by the min-overflow short-circuit (1
+  measurement, `:210`) + a binary search (~7 measurements, `:212-218`).
+- **The lesson-99 slow-band fix is APPLIED:** the degenerate short-circuit now keys on the
+  **clamped inset** `innerW`/`innerH` (`editor.js:286`, `if (innerW < TEXT_AUTOFIT_MIN ||
+  innerH < TEXT_AUTOFIT_MIN)`), not the raw `item.width`. The old ≈12–18px raw-dim slow band
+  is closed; the residual worst case is `innerW = 6px` over the length-capped text — finite
+  and **terminating**, not a hang.
+
+**Verdict:** **BOUNDED end-to-end — no throw, no hang, no `console.error`.** The gallery
+re-open **inherits the released caps verbatim with NO bypass, fork, or re-implementation** —
+confirmed by this story's byte-unchanged assertion for `editor.js`/`editor-model.js` (lines
+155-159) and feature.md "Out of scope" (editor render-boundary guards consumed as released).
+Reachability is **defense-in-depth only**: `editor.js` is registered with **no `"world"`
+key** (`manifest.json:39-44` → isolated world; only `capture.js` is `"world":"MAIN"`,
+`:36`), and there is **no `externally_connectable`** in the manifest — so the `model`
+originates ONLY from the extension's own IndexedDB (`report:<port>`), which is **not
+page-writable and not network-reachable**. A hostile model can arrive only via the
+extension's own corruption, a future bug, or a devtools-planted value (= already-local-
+compromise). **Not an externally-reachable DoS.**
+
+**Recommendation:** none — affirm. The Konva-lane E2E ("Bounded re-open of a hostile /
+oversized stored model") is the right enforcement and must stay green.
+
+### Finding S2 — Bounded-at-render ≠ bounded-envelope (fe-002 Finding 2 carried from arbitration) — ACCEPTED defense-in-depth
+
+**Severity:** low (defense-in-depth; accept-risk — no change)
+
+**Threat (Tampering / DoS — persisted envelope size):** the render caps bound the *canvas*,
+not the *stored envelope*. On `✓ Done` the editor emits `serializeModel(model)`
+(`editor.js:486` → `editor-model.js:33-35`), which serializes the **full** deserialized
+`model` (deserialize returns `clone(payload.items)` **unsliced**, `editor-model.js:92`; only
+`render()` slices to 500). `resaveScreenshot` then persists `target.model = resp.model`
+**verbatim** (this story, line 90). So a model bounded *at render* by the 500/10000 caps is
+nonetheless **persisted in full** and re-`deserializeModel`'d on every subsequent re-open —
+the envelope is whatever the model is, render-time caps do not shrink it.
+
+**Verdict:** **ACCEPTABLE.** The persisted envelope is extension-own IndexedDB data
+(isolated-world, not page-writable, not network — same grounding as S1). This is
+defense-in-depth resilience against the extension's own corruption / a future bug / a
+devtools-planted value, **NOT an externally-reachable DoS**. There is no programmatic loop
+that multiplies items across re-edits — growth is bounded by user pointer gestures
+(`model.push` on draw, `editor.js:414,418,426`), so "unbounded-by-construction" is the
+theoretical envelope shape, not a runaway amplifier. Persisting the full model verbatim is
+*required* for the model-byte-lossless AC; shrinking it would break losslessness.
+
+**Recommendation:** **acknowledge**, and record the **standing guardrail: do NOT weaken the
+inherited `RENDER_ITEM_CAP = 500` / `RENDER_TEXT_CAP = 10000` caps** (`editor.js:192-193`).
+The bounded-re-open AC, the S1 verdict, and the Konva-lane E2E all rest on them; any future
+edit that lowers/removes a cap re-opens the DoS axis and must come back through security.
+
+### Finding S3 — Re-open / re-save handler entry-point hygiene — CLEAN
+
+**Severity:** info
+
+- **EoP / privilege:** additive `case` on the existing `handle()` switch
+  (`background.js:231`), no new top-level listener, no `manifest.json`/permission change
+  (manifest already grants `tabs`/`scripting`/`storage`; `:6`). ✓
+- **Spoofing / two-port isolation:** `reopenScreenshot`/`resaveScreenshot` resolve the port
+  **internally** via `currentTargetPort()` (the boundary-anchored localhost gate,
+  `background.js:81`); callers pass `sid` only, never a port. A `sid` absent from the
+  current target's report → `indexOfScreenshotId` → -1 → **fail-safe no-op** (this story,
+  lines 57, 87), never a cross-port write (write-key ≡ read-key). ✓ The Finding-1
+  stable-identity fix also closes the silent wrong-record corruption path.
+- **Injection:** `shot.model` is never used as an IDB key, never `eval`'d, never string-
+  concatenated; the IDB key is `report:${int port}` from the localhost-gated resolver. ✓
+
+**Recommendation:** none.

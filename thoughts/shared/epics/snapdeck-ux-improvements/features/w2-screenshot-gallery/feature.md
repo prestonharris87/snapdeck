@@ -3,7 +3,7 @@ type: feature
 slug: w2-screenshot-gallery
 wave: 2
 parent_epic: snapdeck-ux-improvements
-status: in-progress
+status: validated
 created_at: 2026-06-18T00:00:00Z
 last_run_id: run-20260620-161818-88519
 depends_on: [w0-per-target-reports, w0-editor-foundation]
@@ -396,3 +396,4 @@ Domains an architect explicitly decided needed no work for this feature. The sen
 ## History
 
 2026-06-20T18:32:03Z — orchestrator: status: 'planned' -> 'in-progress' (started via /mat_implement_feature (BOSS-mode, Wave-2 final))
+2026-06-20T18:48:07Z — orchestrator: status: 'in-progress' -> 'validated' (BOSS-mode freeze; 3 FE stories validated, node --test 144/144, Wave-2 ready)

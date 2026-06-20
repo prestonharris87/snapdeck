@@ -154,10 +154,21 @@ grid + delete-confirm **inline against the existing `popup.css` patterns** (the
   no throw, no hang, no console error — via the inherited guards. The caps are **not**
   weakened. (Defense-in-depth: the model is from the extension's own IndexedDB,
   isolated-world, not page-writable — see scope §2.)
-- [ ] **Zero-port-arg API / two-port isolation.** Fetch, re-open, and delete resolve
-  the current target port **internally** via `currentTargetPort()`; callers pass an
-  **index/id only**, never a port. An index-scoped mutation in target A never touches
-  target B's `report:<port>` record (write-key ≡ read-key).
+- [ ] **No mid-edit wrong-record corruption (stable-identity).** Because the popup is
+  re-openable while an in-page re-edit overlay is still active, a `Delete` of a *sibling*
+  screenshot can splice the report array mid-edit. Re-open / re-save / delete therefore
+  address records by a **stable identity** (synthesized from the preserved `captured_at`
+  + `original` fields), never by array position: a mid-edit sibling delete never corrupts
+  a bystander record, and a `✓ Done` whose target was itself deleted mid-edit is a
+  **fail-safe no-op** (the edit is discarded; no record is created or overwritten). No
+  throw, no `console.error`.
+- [ ] **Zero-port-arg, stable-identity API / two-port isolation.** Fetch, re-open, and
+  delete resolve the current target port **internally** via `currentTargetPort()`;
+  callers pass a **stable per-screenshot identity** (the `captured_at` + `original`
+  synthesis above — NOT the array index) as the mutation handle, never a port; the
+  display `#N` index is presentation-only. An identity-scoped mutation in target A never
+  touches target B's `report:<port>` record (write-key ≡ read-key); a mutation whose
+  identity is absent from the current target's report is a no-op.
 - [ ] **Out-of-scope untouched.** The feature does NOT modify `editor.js`
   draw/render/shape logic, the `model` envelope / `deserializeModel` /
   render-boundary guards, or the per-port report-store keying contract
@@ -322,6 +333,28 @@ resolved to B's port.
 **Then** the feature returns the existing graceful error ("could not open the annotation
 overlay (reload the page so the content script loads): …", mirroring `background.js:280`)
 and the popup surfaces it — never a silent failure, and the stored record is unchanged.
+
+### Test: Mid-edit sibling delete never corrupts the re-edited record (stable-identity — Konva lane)
+
+**Given** `report:5101` holds 3 screenshots and the user clicks the tile for the
+screenshot with stable identity `sid_B` (the former `#2`); the editor opens on its
+stored `original` PNG and the popup closes
+**And When** while that overlay is still active the user re-opens the popup (toolbar
+icon), the grid re-fetches, and the user confirms a `Delete` on the screenshot with
+identity `sid_A` (the former `#1`, a **lower** display index) — the array splices and
+the count ticks to `2`
+**And When** the user finishes editing `sid_B` and clicks `✓ Done`
+**Then** the re-save resolves the record by **`sid_B`** (re-reading the shifted report
+and matching on identity, not array position) and overwrites exactly that record's
+`model` / `annotated` / `annotations`; the bystander record (former `#0`) is
+**byte-unchanged** across `model` / `annotated` / `annotations` / `original` / `console`
+/ `network` / meta
+**And** no uncaught error or `console.error` is emitted
+**And When** instead the user had deleted the **very shot being re-edited** (`sid_B`)
+mid-edit and then clicked `✓ Done`
+**Then** the re-save finds **no** record matching `sid_B` and is a **fail-safe no-op** —
+the report still holds the surviving 2 screenshots; no record is created, overwritten,
+or corrupted; no throw, no `console.error`.
 
 ### Motion E2E (required for any UI feature; write `n/a` for backend-only)
 

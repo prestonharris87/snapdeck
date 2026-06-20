@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: database-engineer
 author_architect: database-architect
 effort: 1
-status: pending
+status: approved
 sentinel: true
 depends_on: []
 created_at: 2026-06-20T16:21:00Z
@@ -89,10 +89,10 @@ repo to claim one from). `files_modified: []`. The sentinel is recorded in:
 
 ## How we validate
 
-- **Schema diff is empty.** The database-engineer opens no migration, edits no
+- [ ] **Schema diff is empty** — the database-engineer opens no migration, edits no
   schema/version manifest, and adds no stored-logic/seed artifact for this feature.
   A non-empty DB-domain diff would itself be the defect.
-- The gallery's data behavior (fetch/re-save/delete/GC, two-port isolation,
+- [ ] The gallery's data behavior (fetch/re-save/delete/GC, two-port isolation,
   count+badge tick, bounded arbitrary-model re-open) is validated by the FE/BE
   stories and the PO's E2E specs — not by any server-side schema assertion.
 
@@ -141,3 +141,21 @@ this DB sentinel, which authors no schema and no destructive DDL. The client-sid
 delete-confirm contract and the emptying-report key-removal GC (FE-owned
 `deleteReport(port)` / `idbDelete(key)`) are owned and detailed by the FE/BE
 stories.
+
+## Revisions
+
+### 2026-06-20 — product-owner (arbitrate, run-20260620 w2-screenshot-gallery)
+
+- **Sentinel affirmed.** No server-side DB change for the gallery — verified the
+  feature rides entirely inside the released `report:<port>` IndexedDB keying
+  (FE/extension-owned per the `data-model.md` ownership correction); no migration
+  mechanism exists in this repo and none is introduced. Cross-domain conflict: none
+  (FE peer-confirmed the no-version-bump / no-new-store / no-new-index basis).
+- **Validate checklist normalized to `- [ ]` items** (was prose bullets) so the
+  finalize "≥1 `- [ ]` validate item per story" gate is satisfied. No content change —
+  same two assertions (empty schema diff; behavior validated by FE/BE stories + PO E2E).
+- The FE-side stable-identity revision (fe-001/002/003) is a value-level read/match
+  change inside the existing `kv` store — still **no** schema/version/store/index impact,
+  so this sentinel is unaffected.
+
+**Status:** pending → approved.

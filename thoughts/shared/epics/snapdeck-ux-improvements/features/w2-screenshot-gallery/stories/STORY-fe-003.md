@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: [STORY-fe-001, STORY-fe-002]
 diff_estimate: substantive
 frontend_lane: N/A
@@ -30,7 +30,10 @@ each tile has a **delete affordance gated behind an inline two-state confirm**
 (Delete → Confirm / Cancel) that, on confirm, removes the shot and updates the count
 + grid. A non-target / empty report renders an empty state. The grid consumes the
 three new background messages from STORY-fe-001 / STORY-fe-002 — it holds **no**
-business logic and **no** port (callers pass an index only).
+business logic and **no** port. The mutation handle the popup round-trips is the
+**stable `sid`** each tile carries (from `GET_REPORT_SCREENSHOTS`), **never the array
+index** (index is display-only — the `#N` badge); this is what keeps re-open / delete
+safe under a mid-edit splice (fe-002 Finding 1).
 
 ## What it should look like
 
@@ -64,11 +67,13 @@ Per the feature.md ASCII wireframe (no ui-designer mockup —
 - **On open:** extend `refresh()` (`popup.js:13-17`) to also call
   `refreshGallery()` → `send({type:"GET_REPORT_SCREENSHOTS"})` → `renderGallery(res.screenshots)`.
 - **`renderGallery(screenshots)`** — clear `#gallery`; if empty/undefined, render a
-  `.sd-empty` message; else append one `.sd-tile` per shot.
+  `.sd-empty` message; else append one `.sd-tile` per shot. Each tile closes over the
+  shot's **`sid`** (the mutation handle) and its display `index`.
 - **Tile** — a `.sd-thumb` **button** wrapping `<img class="sd-thumb-img" src=shot.thumbnail alt="">`
   + a `.sd-thumb-idx` `#${index+1}` badge; `aria-label="Re-open screenshot ${index+1}"`
-  (+ title from `shot.title`/`shot.url`). Click → `reopen(index)`.
-- **`reopen(index)`** — `const res = await send({type:"REOPEN_SCREENSHOT", index});`
+  (+ title from `shot.title`/`shot.url`). Click → `reopen(shot.sid)`. (The `#N` badge uses
+  the array position for display; the **`sid`** is the handle passed to the SW.)
+- **`reopen(sid)`** — `const res = await send({type:"REOPEN_SCREENSHOT", sid});`
   if `res.error` → `setStatus(res.error,"err")` and **stay open**; else
   `window.close()` (mirrors the Add-flow close, `popup.js:21-26`, so the overlay is
   usable). The long-lived edit + re-save run in the SW after the popup closes.
@@ -76,11 +81,13 @@ Per the feature.md ASCII wireframe (no ui-designer mockup —
   - *resting:* a `Delete` button (`aria-label="Delete screenshot ${index+1}"`) →
     on click, swap to the confirm state.
   - *confirm:* a `Delete?` label + `Confirm` button + `Cancel` button. `Confirm` →
-    `confirmDelete(index)`; `Cancel` → restore the resting state (no mutation).
-- **`confirmDelete(index)`** — `const res = await send({type:"DELETE_SCREENSHOT", index});`
+    `confirmDelete(shot.sid)`; `Cancel` → restore the resting state (no mutation).
+- **`confirmDelete(sid)`** — `const res = await send({type:"DELETE_SCREENSHOT", sid});`
   if `res.error` → `setStatus(res.error,"err")`; else `setCount(res.count)` and
-  `await refreshGallery()` — **re-fetch + re-render the whole grid** so the shifted
-  indices are recomputed (NEVER reuse a stale index after a splice).
+  `await refreshGallery()` — **re-fetch + re-render the whole grid** so the display
+  indices recompute and each tile picks up its (unchanged) `sid` (NEVER reuse a stale
+  array index after a splice — the SW already addresses by `sid`, but the grid must also
+  re-fetch so the `#N` badges and the live shot set stay correct).
 - **Keep Clear/Save in sync:** extend the existing `clear` (`popup.js:41-46`) and
   `save`-success (`popup.js:32-35`) handlers to also call `renderGallery([])` so the
   grid empties when the report is cleared/saved. (Additive — does not change their
@@ -160,13 +167,17 @@ must show a visible focus ring (keyboard-activatable per feature.md).
   `GET_REPORT_SCREENSHOTS`.
 - [ ] On a non-target tab or an empty report, the grid shows the `.sd-empty`
   message ("No screenshots in this target's report yet.") and zero tiles.
-- [ ] Clicking a tile sends `REOPEN_SCREENSHOT {index}`; on success the popup
-  closes; on `{error}` the popup surfaces the error in `#status` and stays open.
+- [ ] Clicking a tile sends `REOPEN_SCREENSHOT {sid}` (the shot's stable identity,
+  **not** an array index); on success the popup closes; on `{error}` the popup surfaces
+  the error in `#status` and stays open.
 - [ ] `Delete` flips the tile to the inline confirm state (`Delete?` + `Confirm` +
   `Cancel`); `Cancel` restores the resting state and **sends no message**.
-- [ ] `Confirm` sends `DELETE_SCREENSHOT {index}`, then updates `#count` and
-  re-fetches + re-renders the grid (the removed tile is gone; remaining indices
-  recompute — e.g. former `#3` becomes `#2`).
+- [ ] `Confirm` sends `DELETE_SCREENSHOT {sid}` (stable identity, not index), then
+  updates `#count` and re-fetches + re-renders the grid (the removed tile is gone;
+  remaining display indices recompute — e.g. former `#3` becomes `#2`).
+- [ ] No `popup.js` path ever sends an array `index` as the re-open/delete handle —
+  the `#N` badge is presentation-only; the `sid` from `GET_REPORT_SCREENSHOTS` is the
+  only value passed back to the SW.
 - [ ] After `Clear` or a successful `Save`, the grid empties (`renderGallery([])`).
 - [ ] No emoji / symbol-icon char / inline `<svg>` in new markup; all new labels are
   plain text; decorative `<img>` has `alt=""`; every interactive control has an
@@ -254,3 +265,30 @@ data-URL, leaving full-res `original`/`annotated` in the store for re-open.
 
 **Recommendation:** **acknowledge** — no change for typical use; revisit (downscale in
 fe-001's projection) only if large-report popup latency is observed.
+
+## Revisions
+
+### 2026-06-20 — product-owner (arbitrate, run-20260620 w2-screenshot-gallery)
+
+**Finding 1 (info) — RESOLVED upstream (the popup now passes `sid`, not `index`).** This
+story is the *enabling surface* for fe-002's block (the popup is re-openable mid-edit), but
+it is **not** the fix site (it holds no business logic). Per the contrarian's own guidance,
+I did **not** "solve" it presentationally (hiding the grid mid-edit is impossible — the
+popup has no signal an overlay is open). Instead the fix lands in fe-001/fe-002
+(identity-addressing); this story is revised to **pass the stable `sid` as the mutation
+handle** for re-open and delete (never the array index), with the `#N` badge demoted to
+display-only. `reopen(sid)` / `confirmDelete(sid)` + validate item "no `popup.js` path ever
+sends an array index as the handle." `depends_on` unchanged (fe-001, fe-002).
+
+**Finding 2 (info) — ACCEPTED for v1 with a named re-trigger.** `GET_REPORT_SCREENSHOTS`
+ships the full-resolution `annotated || original` PNG per shot, CSS-scaled in a ~280px
+popup; fine for typical reports (a handful of shots), an unstated "reports stay small"
+assumption for large/high-DPI sets. Accepted as-is to keep this arbitration round focused
+on the silent-corruption block (the load-bearing fix) rather than piling optional perf work
+onto the same diff. **Named re-trigger:** if large-report popup open latency is observed,
+the cheap mitigation is an `OffscreenCanvas` downscale **in fe-001's projection** (return a
+small thumbnail data-URL; keep full-res `original`/`annotated` in the store for re-open) —
+a fe-001-local change, no fe-003 contract impact. Recorded so the assumption is conscious,
+not silent.
+
+**Status:** pending → approved.

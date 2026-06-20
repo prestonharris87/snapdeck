@@ -7,7 +7,7 @@ parent_epic: snapdeck-ux-improvements
 parent_feature: w2-screenshot-gallery
 assignee: devops-engineer
 author_architect: devops-architect
-status: pending
+status: approved
 created_at: 2026-06-20T16:24:00Z
 last_run_id: run-20260620-161818-88519
 defects: []
@@ -146,3 +146,19 @@ are implemented, so it depends on none of them. (If the frontend-architect's rep
 flags a new content-script module, the upgraded substantive story would then
 `depends_on` the FE story that authors that module — mirroring the released
 `fe-005 → do-001` chain in w0.)
+
+## Revisions
+
+### 2026-06-20 — product-owner (arbitrate, run-20260620 w2-screenshot-gallery)
+
+- **Sentinel affirmed; no cross-domain conflict.** No manifest / permission / build / CI
+  change — every seam the gallery consumes (`tabs.sendMessage(ANNOTATE)`, `chrome.storage`,
+  the registered popup + SW, the editor content-script stack, data-URL thumbnail CSP) is
+  already present and permissioned at HEAD; FE peer-confirmed all four manifest-adjacent
+  items clean. Frontmatter + `- [ ]` validate checklist conform.
+- **Unaffected by the FE stable-identity fix.** The `sid` revision (fe-001/002/003) adds
+  no new content-script file, no new top-level listener, no new permission, no new module —
+  it is additive helper fns + value-level matching inside the existing `background.js`. The
+  "no DevOps diff" conclusion holds; this story stays `depends_on: []`.
+
+**Status:** pending → approved.

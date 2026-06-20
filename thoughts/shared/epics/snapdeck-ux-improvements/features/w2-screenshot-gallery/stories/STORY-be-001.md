@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: backend-engineer
 author_architect: backend-architect
 effort: 1
-status: pending
+status: approved
 depends_on: []
 sentinel: true
 created_at: 2026-06-20T16:22:00Z
@@ -111,3 +111,21 @@ dependency on DB/DevOps/other-BE stories.
   No-work decision peer-confirmed with frontend-architect (2-message round); controller
   `/resolve` + `/report/save` + `report.json` projection verified unchanged (files read
   2026-06-20).
+
+## Revisions
+
+### 2026-06-20 — product-owner (arbitrate, run-20260620 w2-screenshot-gallery)
+
+- **Sentinel affirmed; no cross-domain conflict.** The controller is untouched — all
+  three gallery ops are local IndexedDB mutations; the edited `model`/`annotated`/
+  `annotations` only ever reach the controller via the **existing, unchanged** popup
+  "Save report" → `POST /report/save` flow. FE peer-confirmed ownership of `background.js`
+  + `popup/*` + IndexedDB. Frontmatter + `- [ ]` validate checklist conform; nothing to
+  revise.
+- **Unaffected by the FE stable-identity fix.** The `sid` synthesis (fe-001/002/003) is
+  client-side only and derives from fields already present in the local record
+  (`captured_at` + `original`); it does **not** add, rename, or reshape any field in the
+  `report.json` projection the controller persists. The `report.json` per-screenshot
+  field set (`reports.py:139-172`) stays byte-frozen.
+
+**Status:** pending → approved.

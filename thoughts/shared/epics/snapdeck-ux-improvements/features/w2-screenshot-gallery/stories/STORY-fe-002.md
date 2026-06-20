@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: [STORY-fe-001]
 diff_estimate: substantive
 frontend_lane: N/A
@@ -22,14 +22,18 @@ last_run_id: run-20260620-161818-88519
 ## What we're doing
 
 Add the **`REOPEN_SCREENSHOT`** zero-port-arg message handler to
-`extension/background.js`. It re-opens a stored screenshot (by index) in the
+`extension/background.js`. It re-opens a stored screenshot (**by stable identity
+`sid`**, never array index — see fe-001 "Stable-identity addressing") in the
 **released** in-page editor on its stored `original` PNG via the
 `ANNOTATE { image, model }` seam, and on `✓ Done` **replaces** that one record in
-`report:<port>` — taking ONLY `model` / `annotated` / `annotations` from the editor
-response while **preserving** `original` / `console` / `network` / meta from the
-**pre-edit stored record**. This story owns the **re-save preserve-from-record
-contract** (the corruption-risk lock), the graceful no-host / busy paths, and the
-bounded arbitrary-model re-open (security — guards inherited, never re-implemented).
+`report:<port>` — re-reading the record, **matching it by `sid`**, and taking ONLY
+`model` / `annotated` / `annotations` from the editor response while **preserving**
+`original` / `console` / `network` / meta from the **pre-edit stored record**; if the
+`sid` no longer resolves (the shot was deleted while the overlay was open), the re-save
+is a **fail-safe no-op**. This story owns the **re-save preserve-from-record contract**
+(the field-preserve corruption lock), the **stable-identity re-save** (the wrong-record
+corruption lock — fe-002 Finding 1), the graceful no-host / busy paths, and the bounded
+arbitrary-model re-open (security — guards inherited, never re-implemented).
 
 ## What it should look like
 
@@ -42,14 +46,15 @@ target tab** (= the active tab — the gallery shows that target's report and
 
 ```js
 case "REOPEN_SCREENSHOT":
-  return reopenScreenshot(msg.index);
+  return reopenScreenshot(msg.sid);
 
-async function reopenScreenshot(index) {
+async function reopenScreenshot(sid) {
   const port = await currentTargetPort();
   if (port == null) return { error: "no current Snapdeck target tab" };
   const r = await getReport(port);
+  const index = indexOfScreenshotId(r, sid);     // resolve STABLE identity → current position
   const shot = r.screenshots[index];
-  if (!Number.isInteger(index) || index < 0 || !shot) return { error: "no such screenshot" };
+  if (index < 0 || !shot) return { error: "no such screenshot" };  // not in current target → fail-safe
   const tab = await activeTab();
   // Pre-flight PING so a MISSING content-script host surfaces in the popup (the popup
   // awaits THIS quick result and stays open on error). editor.js answers PING
@@ -62,8 +67,10 @@ async function reopenScreenshot(index) {
   }
   // Host present → fire the LONG-LIVED ANNOTATE round-trip and re-save on resolve.
   // The SW survives the popup closing, so the .then() re-save runs after window.close().
+  // Pass the STABLE sid (not index) to the deferred re-save — the array may splice
+  // (mid-edit sibling delete) before Done resolves.
   chrome.tabs.sendMessage(tab.id, { type: "ANNOTATE", image: shot.original, model: shot.model })
-    .then((resp) => resaveScreenshot(port, index, resp))
+    .then((resp) => resaveScreenshot(port, sid, resp))
     .catch(() => { /* tab navigated/closed mid-edit → record left unchanged (no partial write) */ });
   return { ok: true, opening: true };
 }
@@ -72,11 +79,12 @@ async function reopenScreenshot(index) {
 ### `resaveScreenshot` — the preserve-from-record contract (corruption lock)
 
 ```js
-async function resaveScreenshot(port, index, resp) {
+async function resaveScreenshot(port, sid, resp) {
   if (!resp || resp.cancelled) return;          // Cancel OR busy ({cancelled:true,busy:true}) → stored record UNCHANGED
-  const r2 = await getReport(port);             // re-read fresh (robust to SW wake); index stable (see note)
+  const r2 = await getReport(port);             // re-read fresh (robust to SW wake AND to a mid-edit splice)
+  const index = indexOfScreenshotId(r2, sid);   // match by STABLE identity, NOT a held array position
   const target = r2.screenshots[index];
-  if (!target) return;                          // defensive — shot vanished mid-edit (shouldn't happen)
+  if (index < 0 || !target) return;             // shot deleted while overlay open → FAIL-SAFE no-op (edit discarded; NO wrong-record write)
 
   // Take ONLY from the editor response:
   target.model       = resp.model ?? null;      // model-byte lossless envelope {version:1, items:[…]}
@@ -86,7 +94,8 @@ async function resaveScreenshot(port, index, resp) {
   // PRESERVE from the pre-edit record (NEVER read from resp):
   //   target.original, target.console, target.network,
   //   target.url, target.title, target.captured_at, target.viewport
-  // (left untouched by construction — we only overwrite the three fields above)
+  // (left untouched by construction — we only overwrite the three fields above; and
+  //  because original+captured_at are preserved, the matched record's sid is UNCHANGED)
 
   await setReport(port, r2);
   // NO emitReportCountChanged — a re-save does NOT change the count (AC).
@@ -108,11 +117,21 @@ in-place mutation above: re-read the stored record and overwrite **only**
 construction**. `original` is preserved from the record (NOT taken from
 `resp.original`, even though the editor echoes back the same PNG we passed in).
 
-Index-stability note: while the overlay is open the popup is closed (no concurrent
-delete) and a concurrent keyboard capture is blocked by the editor's `active` guard
-(`editor.js:15` → `{cancelled:true,busy:true}`, no push). So the `index` captured at
-re-open dispatch is stable through the `await`; the fresh re-read is robustness, not
-correctness-critical.
+Stable-identity note (**corrects** the original, false "index-stability" claim):
+the in-page editor overlay is page-world DOM (`editor.js:33-40`) and does **NOT**
+disable the browser-action popup — the user **can** re-open the popup (toolbar icon)
+while the overlay is still `active`, and `refresh()` → `refreshGallery()` then exposes a
+working `Delete`. The editor's `active` guard (`editor.js:15`) blocks only a second
+ANNOTATE/capture; it has **zero** visibility into the SW `DELETE_SCREENSHOT` handler. So
+a held **array index is NOT stable** across the long-lived re-edit: a confirmed delete of
+a lower-index sibling splices the array, and a naive `r2.screenshots[index]` re-save would
+overwrite a **bystander** record — silent corruption (fe-002 Finding 1, severity
+**block**). The fix (this revision) is to address by **stable identity (`sid`)**, never
+array position: `resaveScreenshot` re-reads the report and re-matches the record via
+`indexOfScreenshotId(r2, sid)`; if the shot was itself deleted mid-edit the `sid` no longer
+resolves and the re-save is a **fail-safe no-op** (edit discarded, no wrong-record write).
+Because `sid` derives from `original` + `captured_at` — both **preserved** by this very
+re-save — the identity is also stable across re-saves.
 
 ## Existing behavior baseline
 
@@ -148,6 +167,13 @@ correctness-critical.
 
 - **File:** `extension/background.js` only (+ a new test file). Additive `case` +
   two top-level helper fns; **no** new top-level listener (frozen-suite safety).
+- **Address by stable identity (`sid`), never array index.** Re-open and re-save use
+  the `screenshotId` / `indexOfScreenshotId` helpers authored in **STORY-fe-001**
+  (same `background.js`; this story's `depends_on: [STORY-fe-001]` serializes the landing
+  order). A `sid` that no longer resolves (shot deleted mid-edit / wrong target) ⇒ a
+  fail-safe no-op, never a wrong-record write. This is the wrong-record corruption lock
+  (fe-002 Finding 1); the field-preserve contract below is the *which-fields* lock — both
+  are required.
 - **Reuse the released seam verbatim.** ANNOTATE payload is exactly
   `{ type:"ANNOTATE", image: shot.original, model: shot.model }`; do **not**
   pre-process, sanitize, or re-shape `shot.model` (it passes through
@@ -176,17 +202,23 @@ correctness-critical.
 
 ## How we validate it was done correctly
 
-- [ ] Re-open sends `{ type:"ANNOTATE", image: shot.original, model: shot.model }`
-  to the active tab — `shot.model` passed through **verbatim** (no SW-side
-  sanitization/mutation).
+- [ ] Re-open resolves the shot **by `sid`** (`indexOfScreenshotId`) and sends
+  `{ type:"ANNOTATE", image: shot.original, model: shot.model }` to the active tab —
+  `shot.model` passed through **verbatim** (no SW-side sanitization/mutation); a `sid`
+  not in the current target's report returns `{error:"no such screenshot"}`, no sendMessage.
 - [ ] No content-script host (PING rejects) → returns the graceful
   "could not open the annotation overlay (reload the page so the content script
   loads): …" error (mirrors `background.js:280`); the stored record is unchanged.
-- [ ] On `✓ Done`, the record at `index` is **replaced**: `model` model-byte
-  identical to `resp.model`, `annotated` + `annotations` re-rendered from `resp`,
-  while `original` / `console` / `network` / `url` / `title` / `captured_at` /
-  `viewport` are **preserved from the pre-edit record** (NOT the editor's
-  fresh/live values). **No** other screenshot is touched.
+- [ ] On `✓ Done`, the record **matched by `sid`** (re-read fresh, `indexOfScreenshotId`)
+  is **replaced**: `model` model-byte identical to `resp.model`, `annotated` +
+  `annotations` re-rendered from `resp`, while `original` / `console` / `network` /
+  `url` / `title` / `captured_at` / `viewport` are **preserved from the pre-edit record**
+  (NOT the editor's fresh/live values). **No** other screenshot is touched.
+- [ ] **Mid-edit corruption lock (fe-002 Finding 1):** if a **lower-index sibling** is
+  deleted while the overlay is open, the array splices but the re-save still re-matches
+  the edited record by `sid` and writes it correctly — the bystander record is
+  **byte-unchanged**. If the **edited shot itself** is deleted mid-edit, `sid` no longer
+  resolves and the re-save is a **fail-safe no-op** (no record created/overwritten).
 - [ ] `Cancel` (`{cancelled:true}`) and busy (`{cancelled:true,busy:true}`) leave
   the stored record **byte-unchanged**; no double-mount on busy.
 - [ ] A re-save emits **no** `REPORT_COUNT_CHANGED` tick (count unchanged).
@@ -215,7 +247,8 @@ here. No new animation introduced; reduced-motion honored by construction.
 feature-distinct filename:
 
 - `extension/background.reopen.test.mjs` — `reopen_passesStoredOriginalAndModelToAnnotate` —
-  seed `report:5101[1]` with `original:'O'`, `model:{version:1,items:[…]}`; stub
+  seed `report:5101[1]` with `original:'O'`, `captured_at:'CA1'`, `model:{version:1,items:[…]}`;
+  capture `sid1 = screenshotId(shot)`; call `REOPEN_SCREENSHOT {sid:sid1}`; stub
   `chrome.tabs.sendMessage` to capture args (PING resolves `{ok:true}`, ANNOTATE
   captured); assert the ANNOTATE call args are
   `{ type:"ANNOTATE", image:'O', model:<stored model verbatim> }`.
@@ -224,13 +257,14 @@ feature-distinct filename:
   the page", and `report:5101` is byte-unchanged.
 - `extension/background.reopen.test.mjs` — `reopen_nonTarget_returnsError` — tab
   `about:blank`; assert `{error:"no current Snapdeck target tab"}`, no sendMessage.
-- `extension/background.reopen.test.mjs` — `reopen_badIndex_returnsError` — seed 2
-  shots, index 9; assert `{error:"no such screenshot"}`, no sendMessage.
+- `extension/background.reopen.test.mjs` — `reopen_unknownSid_returnsError` — seed 2
+  shots, `REOPEN_SCREENSHOT {sid:"nope"}`; assert `{error:"no such screenshot"}`, no sendMessage.
 - `extension/background.reopen.test.mjs` — `resave_preservesCaptureFields_takesOnlyEditorModel` —
-  **(the corruption-lock assertion)** seed `report:5101[1]` = `{ original:'O',
+  **(the field-preserve corruption-lock assertion)** seed `report:5101[1]` = `{ original:'O',
   console:['c'], network:['n'], url:'U', title:'T', captured_at:'CA',
   viewport:{w:9,h:9}, model:{version:1,items:[{old:true}]}, annotated:'OLD',
-  annotations:[{old:true}] }`; call `resaveScreenshot(5101, 1, { model:{version:1,
+  annotations:[{old:true}] }`; capture `sid = screenshotId(that record)`; call
+  `resaveScreenshot(5101, sid, { model:{version:1,
   items:[{new:true}]}, annotated:'NEW', annotations:[{new:true}], original:'ECHO',
   meta:{url:'FRESH',title:'FRESH',captured_at:'FRESH',viewport:{w:1,h:1}},
   console:['LIVE'], network:['LIVE'] })`; assert the stored record =
@@ -238,15 +272,28 @@ feature-distinct filename:
   captured_at:'CA', viewport:{w:9,h:9}, model:{version:1,items:[{new:true}]},
   annotated:'NEW', annotations:[{new:true}] }` — i.e. model/annotated/annotations
   took the editor values; original/console/network/meta were **preserved** (NOT
-  'ECHO'/'LIVE'/'FRESH').
+  'ECHO'/'LIVE'/'FRESH'). (Because original+captured_at are preserved, `sid` is unchanged.)
+- `extension/background.reopen.test.mjs` — `resave_siblingDeletedMidEdit_matchesBySid_noBystanderCorruption` —
+  **(the wrong-record corruption-lock assertion — fe-002 Finding 1 block)** seed 3 shots
+  with distinct `captured_at`; capture `sidB = screenshotId(shot#2)`; **delete the
+  lower-index shot #1** (splice) so the edited record shifts from index 2 → 1; then call
+  `resaveScreenshot(5101, sidB, {model:{version:1,items:[{new:true}]}, annotated:'NEW', …})`;
+  assert the record now at index 1 (the one whose `sid===sidB`) got the new model/annotated,
+  and the **bystander** record (former #0, now index 0) is byte-unchanged across
+  model/annotated/annotations/original/console/network/meta.
+- `extension/background.reopen.test.mjs` — `resave_selfDeletedMidEdit_failSafeNoOp` —
+  seed 2 shots; capture `sidX = screenshotId(shot#0)`; **delete shot#0** so `sidX` no
+  longer resolves; call `resaveScreenshot(5101, sidX, {model:…, annotated:'NEW'})`; assert
+  the report still holds the surviving 1 shot byte-unchanged and **no** record was created
+  or overwritten (fail-safe no-op).
 - `extension/background.reopen.test.mjs` — `resave_cancelled_noMutation` — call
-  `resaveScreenshot(5101, 1, { cancelled:true })`; assert record byte-unchanged.
+  `resaveScreenshot(5101, sid, { cancelled:true })`; assert record byte-unchanged.
 - `extension/background.reopen.test.mjs` — `resave_busy_noMutation` — call with
   `{ cancelled:true, busy:true }`; assert record byte-unchanged (no double-write).
 - `extension/background.reopen.test.mjs` — `resave_doesNotEmitCountTick` — assert
   no `storage.session.set` captured during a re-save (count unchanged).
 - `extension/background.reopen.test.mjs` — `resave_twoPortIsolation` — seed
-  `report:5101` + `report:5102`; `resaveScreenshot(5101, 0, …)`; assert
+  `report:5101` + `report:5102`; `resaveScreenshot(5101, <sid of a 5101 shot>, …)`; assert
   `report:5102` byte-for-byte unchanged.
 - `extension/background.reopen.test.mjs` — `moduleLoadsClean_noStorageKey` —
   second vm context whose `chrome` mock omits `storage`: assert no throw at load,
@@ -366,3 +413,56 @@ target than the thumbnails the user is looking at. Largely mitigated because Chr
 the browser-action popup on focus loss, so a deliberate tab switch usually dismisses the
 popup first. Recorded as a conscious assumption ("the active target does not change
 between grid render and tile click"), not an actionable defect.
+
+## Revisions
+
+### 2026-06-20 — product-owner (arbitrate, run-20260620 w2-screenshot-gallery)
+
+**Finding 1 (block) — RESOLVED BY REVISION (stable-identity addressing), NOT
+`## Acknowledged Risk`.** This is silent data corruption (a re-save overwrites a
+*bystander* record after a mid-edit sibling delete), the fix is cheap and **already in
+scope** (the API was spec'd "by index/**id**"), and it needs **no released-code change** —
+verified against `background.js:284-295` that the capture record stores `captured_at` +
+`original` (no `id`), both **preserved** by `resaveScreenshot`, so they synthesize a stable
+identity. The block disposition is therefore *resolve*, not *accept* — acknowledging silent
+corruption when a cheap, in-scope, no-released-change fix exists would be the wrong call.
+Revised:
+- `REOPEN_SCREENSHOT` now takes `msg.sid`, resolves the shot via `indexOfScreenshotId`
+  (fe-001 helper), and passes the **`sid`** (not a held index) into the deferred re-save.
+- `resaveScreenshot(port, sid, resp)` re-reads the report and **re-matches the record by
+  `sid`**; a `sid` that no longer resolves ⇒ **fail-safe no-op** (edit discarded; no
+  wrong-record write). The field-preserve contract is unchanged (still overwrites only
+  `model`/`annotated`/`annotations`; preserves `original`/`console`/`network`/meta).
+- **Corrected the now-false story claim**: the old "Index-stability note" asserted "while
+  the overlay is open the popup is closed (no concurrent delete)" — the contrarian verified
+  (and I confirmed against `editor.js:13-16,33-40`) the popup **is** re-openable while the
+  overlay is active and the `active` guard has zero visibility into `DELETE_SCREENSHOT`.
+  Rewrote it as the "Stable-identity note" explaining why index is unsafe and `sid` is the fix.
+- Validate checklist + unit tests updated: re-open/resave by `sid`;
+  **`resave_siblingDeletedMidEdit_matchesBySid_noBystanderCorruption`** (the wrong-record
+  lock) + **`resave_selfDeletedMidEdit_failSafeNoOp`**.
+Paired lock-step with fe-001 (emits `sid` + `screenshotId`/`indexOfScreenshotId` helpers)
+and fe-003 (popup passes `sid`). `depends_on` graph unaffected. Promoted to a feature.md AC
++ a Konva-lane mid-edit E2E so the guard is validator-enforceable.
+
+**Finding 2 (info) — DEFERRED to security-architect Phase 7 STRIDE.** `resaveScreenshot`
+persists `resp.model` verbatim (correct for model-byte losslessness), so a model
+*bounded-at-render* by the inherited caps is nonetheless stored in full and
+re-deserialized on the next re-open — envelope growth across re-edits is
+unbounded-by-construction. Same-origin extension IndexedDB (isolated-world, not
+page-writable) ⇒ defense-in-depth, not an externally-reachable DoS. This is the
+correct Phase-7 question ("bounded **end-to-end**," not just bounded-at-render); it's
+already in the stress-test § Security pointer. **Standing guardrail: do NOT weaken the
+inherited `RENDER_ITEM_CAP=500` / `RENDER_TEXT_CAP=10000` caps** — the bounded-re-open AC
+and Konva-lane E2E depend on them. No code change at arbitrate; flagged for security.
+
+**Finding 3 (info) — ACCEPTED (conscious assumption); HARDENED as a side effect of the
+Finding-1 fix.** With identity-addressing, if the active target changes between grid render
+and tile click, `reopenScreenshot` resolves the clicked `sid` against the *now-current*
+target's report and almost always finds **no match** ⇒ a fail-safe `{error}` no-op, rather
+than silently re-opening shot *N* of a different target (the index-addressing failure mode).
+The residual (two different targets both holding a shot with identical `captured_at` +
+`original` — effectively impossible across distinct captures) is accepted; Chrome's
+focus-close of the popup already mitigates the trigger. Recorded; no further change.
+
+**Status:** pending → approved.

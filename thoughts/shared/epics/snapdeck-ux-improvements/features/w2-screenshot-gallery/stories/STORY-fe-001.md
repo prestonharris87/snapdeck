@@ -8,7 +8,7 @@ parent_epic: snapdeck-ux-improvements
 assignee: frontend-engineer
 author_architect: frontend-architect
 effort: 2
-status: pending
+status: approved
 depends_on: []
 diff_estimate: substantive
 frontend_lane: N/A
@@ -24,15 +24,18 @@ last_run_id: run-20260620-161818-88519
 Add two new **zero-port-arg** message handlers to the extension service worker
 (`extension/background.js`) that the popup gallery (STORY-fe-003) consumes:
 (1) **`GET_REPORT_SCREENSHOTS`** — returns the current target's `report:<port>`
-`screenshots[]` projected to `{ index, thumbnail, light-meta }` for the grid;
-(2) **`DELETE_SCREENSHOT`** — removes one screenshot by index from the current
-target's report, then emits the `REPORT_COUNT_CHANGED` tick so the icon badge
-repaints. Both resolve the current target port **internally** via the released
-`currentTargetPort()` — callers pass an **index only, never a port** (write-key ≡
+`screenshots[]` projected to `{ index, sid, thumbnail, light-meta }` for the grid
+(the `sid` is a **stable per-screenshot identity** — see "Stable-identity addressing"
+below; the array `index` is display-ordering only);
+(2) **`DELETE_SCREENSHOT`** — removes one screenshot **by stable identity (`sid`)**
+from the current target's report, then emits the `REPORT_COUNT_CHANGED` tick so the
+icon badge repaints. Both resolve the current target port **internally** via the
+released `currentTargetPort()` — callers pass a **`sid` only, never a port** (write-key ≡
 read-key, exactly as `addScreenshot()`/`saveReport()` already do). This story also
 owns the **GC home** decision (see "GC helper lock" below): a delete that empties
 the report truly removes the `report:<port>` IDB key rather than leaving an empty
-record behind.
+record behind; and it owns the **stable-identity projection** that the delete /
+re-open / re-save handlers (this story + fe-002) all address records by.
 
 ## What it should look like
 
@@ -51,12 +54,43 @@ case "GET_REPORT_SCREENSHOTS": {
   return {
     port,
     screenshots: r.screenshots.map((s, index) => ({
-      index,
+      index,                                        // DISPLAY ordering only — NOT the mutation handle
+      sid: screenshotId(s),                         // STABLE identity (captured_at + original fingerprint) — the mutation handle
       thumbnail: s.annotated || s.original,         // annotated PNG; fall back to original when no annotations
       url: s.url, title: s.title, captured_at: s.captured_at,
       hasAnnotations: !!(s.annotations && s.annotations.length),
     })),
   };
+}
+```
+
+### Stable-identity addressing (resolves fe-002 Finding 1 [block] + fe-001 Finding 1)
+
+The released capture record (`addScreenshot`, `background.js:284-295`) carries **no
+`id` field** — array index was the only handle, and index is **not stable** under a
+mid-edit splice (the popup is re-openable while an in-page re-edit overlay is active,
+so a `Delete` of a lower-index sibling shifts the array under an in-flight re-save →
+silent wrong-record corruption; see fe-002 Finding 1). Scope sanctions the fix: the API
+is specified **"by index/id"**. This story synthesizes a stable identity from fields
+that are **already stored AND preserved across re-save** (`captured_at`, tie-broken by
+an `original`-bytes fingerprint) — **no released-code change**:
+
+```js
+// Stable per-screenshot identity. Both inputs are preserved by resaveScreenshot
+// (fe-002), so the identity survives a re-save AND an array splice → it, not the
+// array index, is the mutation handle for delete / re-open / re-save.
+function screenshotId(s) {
+  // captured_at is primary; append a cheap original-bytes fingerprint so two shots
+  // captured in the same millisecond stay distinguishable. (Engineer may pick a
+  // stronger deterministic fingerprint; it MUST derive only from preserved fields.)
+  const orig = s.original || "";
+  return `${s.captured_at}|${orig.length}:${orig.slice(-24)}`;
+}
+// Resolve a stable identity to its current array position in a freshly-read report.
+// Returns -1 when the shot is gone (deleted mid-edit / not in this target) → callers
+// fail safe (no throw, no wrong-record write).
+function indexOfScreenshotId(r, sid) {
+  return r.screenshots.findIndex((s) => screenshotId(s) === sid);
 }
 ```
 
@@ -74,9 +108,9 @@ case "DELETE_SCREENSHOT": {
   const port = await currentTargetPort();
   if (port == null) return { error: "no current Snapdeck target tab" };  // defensive; popup never reaches this
   const r = await getReport(port);
-  const index = msg.index;
-  if (!Number.isInteger(index) || index < 0 || index >= r.screenshots.length) {
-    return { error: "no such screenshot" };
+  const index = indexOfScreenshotId(r, msg.sid);   // match by STABLE IDENTITY, never array position
+  if (index < 0) {
+    return { error: "no such screenshot" };         // already deleted / not in current target → fail-safe no-op
   }
   r.screenshots.splice(index, 1);                  // remove exactly that one
   if (r.screenshots.length === 0) {
@@ -179,11 +213,13 @@ the released `Clear` button, which already wipes the note via `clearReport` →
   module top level** — function declarations only, no new listeners.
 - **Port resolution is internal and released.** Use `currentTargetPort()`
   verbatim; do **not** add a second/looser localhost predicate (the released SSOT
-  guards deceptive hosts → null, `:81`). Callers (popup) pass `msg.index` only.
-- **Index-scoped isolation.** Because the port is resolved from the active tab
-  inside the handler, an index-scoped delete in target A can never touch target
-  B's `report:<port>` record (write-key ≡ read-key). Do not accept or read a port
-  from `msg`.
+  guards deceptive hosts → null, `:81`). Callers (popup) pass `msg.sid` only (a
+  **stable identity**, never an array index or a port).
+- **Identity-scoped isolation.** Because the port is resolved from the active tab
+  inside the handler and the record is matched by `sid` (not array position), a
+  delete in target A can never touch target B's `report:<port>` record (write-key ≡
+  read-key) — and a `sid` belonging to a different target simply won't match, so the
+  delete is a no-op. Do not accept or read a port from `msg`.
 - **Emit on count change only.** `DELETE_SCREENSHOT` emits via the released
   `emitReportCountChanged` (its own `port==null` guard at `:54` protects the
   defensive non-target path). `GET_REPORT_SCREENSHOTS` is read-only — **never**
@@ -195,28 +231,34 @@ the released `Clear` button, which already wipes the note via `clearReport` →
 ## How we validate it was done correctly
 
 - [ ] `GET_REPORT_SCREENSHOTS` on a target with N screenshots returns
-  `screenshots.length === N`, each item `{ index, thumbnail, url, title,
-  captured_at, hasAnnotations }`, `index` ascending `0..N-1` in capture order.
+  `screenshots.length === N`, each item `{ index, sid, thumbnail, url, title,
+  captured_at, hasAnnotations }`, `index` ascending `0..N-1` in capture order, and
+  `sid` present + distinct per shot.
 - [ ] `thumbnail` equals the screenshot's `annotated` when present, else its
   `original`.
 - [ ] `GET_REPORT_SCREENSHOTS` on a non-target tab (`currentTargetPort()` → null)
   returns `{ port: null, screenshots: [] }` with **no** IDB read attempted and
   **no** throw.
-- [ ] `DELETE_SCREENSHOT { index: 1 }` on a 3-shot report leaves exactly the
-  former `#0` and `#2`, returns `{ ok:true, count:2 }`, and the persisted record
-  has 2 screenshots.
+- [ ] `DELETE_SCREENSHOT { sid }` for the middle shot of a 3-shot report leaves
+  exactly the former `#0` and `#2`, returns `{ ok:true, count:2 }`, and the
+  persisted record has 2 screenshots.
+- [ ] **Stable identity survives a splice:** after deleting a **lower-index** sibling,
+  every surviving shot's `sid` still resolves (via `indexOfScreenshotId`) to the
+  correct record at its shifted position — and `screenshotId` derives only from
+  `captured_at` + `original` (preserved fields), so a `sid` is unchanged by a re-save.
 - [ ] `DELETE_SCREENSHOT` that removes the **last** screenshot calls
   `deleteReport` → the `report:<port>` key is **absent** from the store
   afterward (`getReport(port)` reads `{note:"", screenshots:[]}`, count 0).
 - [ ] A delete (any) emits `REPORT_COUNT_CHANGED { port, count: <new>, ts }` via
   `chrome.storage.session.set`; the emptying delete emits `count: 0`.
-- [ ] `DELETE_SCREENSHOT` with an out-of-range or non-integer `index` returns
-  `{ error }` and mutates nothing.
+- [ ] `DELETE_SCREENSHOT` with a `sid` **not present** in the current target's report
+  (already deleted, or belongs to another target) returns `{ error }` and mutates
+  nothing (fail-safe no-op — `indexOfScreenshotId` → -1).
 - [ ] Released seams unchanged: `clearReport`, `setReport`, `getReport`,
   `addScreenshot`, `saveReport`, every existing `handle()` case, and the w1 badge
   listeners are byte-identical; **no** new top-level listener.
 - [ ] Two-port isolation: a delete with target A active never alters
-  `report:<B>` (handler resolves the port internally; `msg` carries no port).
+  `report:<B>` (handler resolves the port internally; `msg` carries no port, only a `sid`).
 
 ## Motion contract
 
@@ -235,26 +277,33 @@ dir-level `node --test extension/*.test.mjs` run (a sibling owns
 
 - `extension/background.gallery.test.mjs` — `getReportScreenshots_returnsIndexedProjection` —
   seed `report:5101` with 3 screenshots (one with `annotated`, one annotation-less);
-  assert the response is `{ port:5101, screenshots:[{index:0,thumbnail:<annotated>,…},…] }`
-  in order, `thumbnail` falls back to `original` for the annotation-less shot.
+  assert the response is `{ port:5101, screenshots:[{index:0,sid:<screenshotId(s0)>,thumbnail:<annotated>,…},…] }`
+  in order, each `sid` present + distinct, `thumbnail` falls back to `original` for the
+  annotation-less shot.
 - `extension/background.gallery.test.mjs` — `getReportScreenshots_nonTarget_emptyNoIdbRead` —
   mock tab URL `about:blank`; assert `{ port:null, screenshots:[] }` and the idb
   `get` call-counter did not increment (proves `getReport(null)` short-circuit).
-- `extension/background.gallery.test.mjs` — `deleteScreenshot_byIndex_splicesAndEmitsCount` —
-  seed 3 shots, `DELETE_SCREENSHOT {index:1}`; assert remaining shots are the
-  former `#0` and `#2`, return `{ok:true,count:2}`, and the captured
+- `extension/background.gallery.test.mjs` — `deleteScreenshot_bySid_splicesAndEmitsCount` —
+  seed 3 shots, `DELETE_SCREENSHOT {sid:<screenshotId(middle)>}`; assert remaining
+  shots are the former `#0` and `#2`, return `{ok:true,count:2}`, and the captured
   `storage.session.set` tick is `{ reportCountChanged:{ port:5101, count:2, ts:<number> } }`.
+- `extension/background.gallery.test.mjs` — `screenshotId_stableAcrossSpliceAndUnknownSidNoOp` —
+  **(the identity-stability assertion)** seed 3 shots; capture `sid2 = screenshotId(shot#2)`;
+  delete the **lower-index** shot `#1` by its sid; assert `indexOfScreenshotId(getReport(5101), sid2)`
+  now resolves to the **shifted** position (former `#2` → index 1) and points at the
+  same record (same `captured_at`/`original`); then `DELETE_SCREENSHOT {sid:"does-not-exist"}`
+  returns `{error}` and mutates nothing (fail-safe no-op).
 - `extension/background.gallery.test.mjs` — `deleteScreenshot_lastShot_removesKey_GC` —
-  seed 1 shot, delete it; assert the kv stub has **no** `report:5101` key
+  seed 1 shot, delete it by its sid; assert the kv stub has **no** `report:5101` key
   (use a `has`/`delete` call-counter or assert `'report:5101' in kv === false`),
   `getReport(5101)` reads `{note:"",screenshots:[]}`, and the tick emits `count:0`.
-- `extension/background.gallery.test.mjs` — `deleteScreenshot_outOfRange_noMutation` —
-  seed 2 shots, `DELETE_SCREENSHOT {index:9}`; assert `{error}`, kv record
+- `extension/background.gallery.test.mjs` — `deleteScreenshot_unknownSid_noMutation` —
+  seed 2 shots, `DELETE_SCREENSHOT {sid:"nope"}`; assert `{error}`, kv record
   unchanged (2 shots), **no** tick captured.
 - `extension/background.gallery.test.mjs` — `deleteScreenshot_twoPortIsolation` —
   seed `report:5101` (2 shots) + `report:5102` (3 shots), active tab `:5101`,
-  delete index 0; assert `report:5101` has 1 shot and `report:5102` is
-  byte-for-byte unchanged (count 3).
+  delete the first `:5101` shot by its sid; assert `report:5101` has 1 shot and
+  `report:5102` is byte-for-byte unchanged (count 3).
 - `extension/background.gallery.test.mjs` — `moduleLoadsClean_noStorageKey` —
   a second vm context whose `chrome` mock **omits** `storage` (mirrors frozen
   suites): assert `vm.runInContext` does not throw and the `onMessage` listener
@@ -352,3 +401,47 @@ the window is small and the SW is single-threaded so it only manifests across an
 Flagged because this feature adds a new user-driven mutator to that set, slightly widening
 the surface. Not actionable at design time without a store-wide locking change (out of
 scope); recorded for conscious awareness.
+
+## Revisions
+
+### 2026-06-20 — product-owner (arbitrate, run-20260620 w2-screenshot-gallery)
+
+**Finding 1 (concern) — RESOLVED BY REVISION (stable-identity projection). This is the
+fix site for fe-002's `block`.** Index-addressing is the root cause of fe-002 Finding 1
+(silent wrong-record corruption on a mid-edit sibling delete). I verified against released
+code that the `addScreenshot` record (`background.js:284-295`) carries **`captured_at` and
+`original` but no `id`** — so a stable identity is synthesizable from already-stored,
+**re-save-preserved** fields with **zero released-code change**, exactly as the contrarian
+recommended and as scope sanctions ("by index/**id**"). Revised:
+- `GET_REPORT_SCREENSHOTS` now emits `sid` (a `screenshotId(s)` = `captured_at` +
+  `original`-bytes fingerprint) alongside the display `index`; added the `screenshotId` /
+  `indexOfScreenshotId` helpers. The `#N` index stays presentation-only.
+- `DELETE_SCREENSHOT` now matches the record by `sid` via `indexOfScreenshotId` (no match
+  ⇒ `{error}` fail-safe no-op), not by `msg.index`.
+- Validate checklist + unit tests updated: projection emits distinct `sid`; delete by sid;
+  **`screenshotId_stableAcrossSpliceAndUnknownSidNoOp`** proves a held `sid` re-resolves to
+  the correct record after a lower-index sibling splice and that an unknown `sid` is a no-op.
+This pairs lock-step with fe-002 (re-open/re-save by `sid`) and fe-003 (popup passes `sid`,
+never an index). `depends_on` graph unaffected (fe-001 ← fe-002 ← fe-003). Promoted to a
+feature.md AC ("No mid-edit wrong-record corruption (stable-identity)") + a Konva-lane E2E
+so the guard is validator-enforceable and an engineer can't backslide to index-addressing.
+
+**Finding 2 (info) — ACCEPTED; GC claim scoped precisely (no over-claim).** The GC home
+removes the `report:<port>` key **only on delete-to-empty**; the released `saveReport`
+(`background.js:328`) and `CLEAR_REPORT` (`:252`) paths still `setReport(port,
+EMPTY_REPORT())` and **keep an empty key** — repointing them touches the released keying
+contract and is explicitly out of scope. So the precise extent is: **Delete bounds the
+PNG/payload bloat (the real LOW-2 concern) by emptying `screenshots[]` and removes the key
+on delete-to-empty; it does NOT GC the empty-record keyspace left by Save/Clear** (residual
+~tens of bytes per distinct dev-server port ever visited — bounded, harmless). The
+decision-memo and any reader must not state "the store does not accumulate empty/stale
+records" without this qualifier. No code change.
+
+**Finding 3 (info) — ACCEPTED (pre-existing, conscious awareness).** `DELETE_SCREENSHOT`
+joins the released unlocked `getReport→mutate→setReport` set (`addScreenshot`/`SET_NOTE`/
+`saveReport`); last-writer-wins across an await is a pre-existing store property, not
+introduced here, and a store-wide lock is out of scope. The stable-identity fix above
+narrows the *user-visible* corruption window (a dropped delete is a re-fetchable count
+blip, not a Frankenstein record). Recorded; no change.
+
+**Status:** pending → approved.

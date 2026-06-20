@@ -287,3 +287,82 @@ linkage, not `depends_on` ids (cross-feature; feature-level edge in feature.md).
 ## History
 
 - 2026-06-20 — created by frontend-architect (effort=2, depends on STORY-fe-001)
+
+## Contrarian Findings
+
+### Finding 1 — Re-save addresses the record by a STALE array index; a delete from a re-opened popup mid-edit silently corrupts the wrong screenshot
+
+**Severity:** block
+
+**Mechanism:** `reopenScreenshot(index)` captures `index` at dispatch, fires the
+**long-lived** `ANNOTATE` round-trip fire-and-forget, and returns `{ok:true,opening:true}`
+so the popup `window.close()`s. On `✓ Done` the deferred `.then` runs
+`resaveScreenshot(port, index, resp)`, which re-reads the report fresh and writes the
+edited fields into `r2.screenshots[index]` — addressing by **array position**, and the
+records carry **no stable id** (verified: `addScreenshot` pushes a plain object with no
+id, `background.js:284-295`). The story's index-stability note (lines 111-115) asserts
+this is safe because *"while the overlay is open the popup is closed (no concurrent
+delete)."* **That premise is false.** The in-page editor overlay is page-world DOM
+(`editor.js:33-40`); it does not disable the browser-action popup. The user can re-open
+the popup by clicking the toolbar icon while the overlay is still `active` — `refresh()`
+→ `refreshGallery()` re-fetches the live grid (fe-003), exposing a working `Delete`.
+The editor's `active` guard (`editor.js:15`) blocks a second *ANNOTATE/capture* but has
+**zero** visibility to the SW's `DELETE_SCREENSHOT` handler; nothing tracks an in-flight
+re-edit. Sequence: re-edit shot at index *i* in flight → user re-opens popup → confirms
+`DELETE_SCREENSHOT{index:j}` with *j ≤ i* → `splice` shifts the array → user clicks
+`✓ Done` → `resaveScreenshot` re-reads the shifted report and overwrites
+`r2.screenshots[i]`, which is now the **former shot i+1**. Result: that bystander record
+keeps its own preserved `original`/`console`/`network` but receives shot *i*'s edited
+`model`/`annotated`/`annotations` — a silent Frankenstein record; the shot actually
+edited is left unchanged; **no error, no console.error**. (If the edited shot itself was
+the deletion and it was the last index, `r2.screenshots[index]` is `undefined` → the
+defensive guard at line 79 returns and the user's edit is silently *lost* instead —
+same root cause, milder symptom.) The fresh re-read framed as "robustness" (line 114) is
+precisely what makes the wrong-record write deterministic. Note the scope already
+sanctioned the fix: feature.md / scope.md describe the new API as **"by index/id"** — the
+architect chose the weaker `index`.
+
+**Recommendation:** **revise** — address re-open / delete / re-save by a **stable
+identity**, not array position. No released code need change: synthesize identity from
+fields already stored and preserved (`captured_at`, tie-broken by `original` bytes if a
+same-millisecond collision is a concern — same `Date.now()`-resolution caveat as the w0
+nonce). fe-001's projection emits the identity, this handler re-matches the record on
+re-save (no match ⇒ deleted mid-edit ⇒ no-op), and fe-003 passes it. Alternatively the
+SW tracks an in-flight-reedit lock `{port,index}` and `DELETE_SCREENSHOT` refuses/adjusts
+while a re-edit is pending — but identity-addressing is cleaner and hardens fe-001's
+delete too (see fe-001 Finding 1). If the team instead elects to ship index-addressing,
+this requires an explicit `## Acknowledged Risk` (stated tolerance for silent
+wrong-record corruption when a shot is deleted mid-re-edit) **and** PO approval per the
+block rubric.
+
+### Finding 2 — Re-save persists `resp.model` verbatim; it round-trips and re-deserializes on the next re-open (→ security-architect Phase 7)
+
+**Severity:** info
+
+**Mechanism:** `resaveScreenshot` writes `target.model = resp.model ?? null`
+(line 82) straight back to IndexedDB with no shape check — correct for model-byte
+losslessness, but it means a stored `model` that is *bounded at RENDER* by the inherited
+caps (`RENDER_ITEM_CAP=500` slices the render list, `editor.js:178-179`; `RENDER_TEXT_CAP`
+clamps display, `:256`) is nonetheless **persisted in full** in the envelope and
+re-`deserializeModel`'d on every subsequent re-open. The caps bound the *canvas*, not the
+*stored envelope size*, so envelope growth across re-edits is unbounded-by-construction.
+This is same-origin extension IndexedDB (isolated-world, not page-writable) → defense-in-
+depth, not an externally-reachable DoS — consistent with Critical directive §2. **Not a
+block; flagged for security-architect's Phase-7 STRIDE re-confirm** to close the loop on
+"bounded end-to-end," not just bounded-at-render.
+
+### Finding 3 — Re-open target can diverge from the rendered grid (active-tab / multi-window)
+
+**Severity:** info
+
+**Mechanism:** The grid is rendered from `currentTargetPort()` at popup-open; on click,
+`reopenScreenshot` re-resolves `currentTargetPort()` + `activeTab()` **fresh**
+(`background.js:78-83,67-70`, using `{active:true,currentWindow:true}`). Port and host
+tab are therefore self-consistent *at click time*, but if the active target changed
+between render and click — a tab switch, or a multi-window setup where the SW's
+`currentWindow` resolves to a different window than the one whose popup was shown — the
+handler reads index *N* of the **now-current** target's report, which may be a different
+target than the thumbnails the user is looking at. Largely mitigated because Chrome closes
+the browser-action popup on focus loss, so a deliberate tab switch usually dismisses the
+popup first. Recorded as a conscious assumption ("the active target does not change
+between grid render and tile click"), not an actionable defect.

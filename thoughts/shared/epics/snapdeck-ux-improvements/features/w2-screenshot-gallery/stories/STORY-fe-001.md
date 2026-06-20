@@ -285,3 +285,70 @@ prose here, not a `depends_on` id (cross-feature ids must not appear in story
 ## History
 
 - 2026-06-20 — created by frontend-architect (effort=2, depends on none)
+
+## Contrarian Findings
+
+### Finding 1 — Screenshots have no stable identity; all three handlers address by array index (root cause of fe-002's block)
+
+**Severity:** concern
+
+**Mechanism:** `GET_REPORT_SCREENSHOTS` projects `{index, …}` (line 53), and
+`DELETE_SCREENSHOT` / fe-002's `REOPEN_SCREENSHOT` / `resaveScreenshot` all address a
+record by its **array position**. Released capture (`addScreenshot`, `background.js:284-295`,
+verified byte-frozen and out-of-scope here) pushes a record with **no id field**, so array
+index is the *only* handle the feature has. Within a single popup session `DELETE_SCREENSHOT`
+is safe — it re-reads + splices, and fe-003 re-fetches the grid after every mutation, so
+shifted indices are recomputed; and external **appends** (a keyboard-shortcut capture) land
+at the tail, never disturbing a lower index. The danger is any mutation that **removes or
+inserts below a held index while another operation holds that index across an await** — which
+is exactly fe-002's long-lived re-edit (see STORY-fe-002 Finding 1, severity **block**:
+a delete from a re-opened popup mid-edit makes `resaveScreenshot` overwrite the wrong record,
+silently). This story owns the projection, so the fix lands **here**: emit a stable identity
+alongside `index` (e.g. `captured_at`, tie-broken by `original` if same-millisecond
+collisions matter) and let `DELETE_SCREENSHOT` accept/match by that identity. The scope
+sanctions it — the API is specified as **"by index/id"** (scope.md § New zero-port-arg
+message API), not index-only.
+
+**Recommendation:** **revise** in lockstep with fe-002 — add a stable per-screenshot
+identity to the projection and make delete/re-open/re-save match on it (no match ⇒ no-op).
+Index may remain for display ordering (`#N` badge), but must not be the mutation handle.
+If the team accepts index-addressing instead, this concern folds into fe-002's required
+`## Acknowledged Risk`.
+
+### Finding 2 — "GC home" only removes the key on delete-to-empty; the dominant Save/Clear paths still leave empty `report:<port>` records
+
+**Severity:** info
+
+**Mechanism:** `deleteReport(port)` removes the `report:<port>` key, but **only** when a
+delete empties the report (line 82-83). The far more common terminal flows still write an
+empty record and **keep the key**: released `saveReport` calls `clearReport(browserPort)`
+on a successful upload (`background.js:328`) and `CLEAR_REPORT` calls `clearReport`
+(`:252`), both of which `setReport(port, EMPTY_REPORT())` (`:48`). So scope §4's framing
+*"so the store does not accumulate empty/stale records"* is imprecise — after any normal
+Save the store retains a `{note:"",screenshots:[]}` key per port ever used. This is
+practically harmless (the genuine LOW-2 concern was unbounded **screenshot/PNG** bloat,
+which delete + clear fully bound by emptying `screenshots[]`; a residual empty record is
+~tens of bytes, and the keyspace is bounded by the count of distinct dev-server ports ever
+visited), and keeping `clearReport` unchanged is consistent with the "keying contract
+consumed unchanged" scope boundary. Recorded so no downstream reader believes the keyspace
+is fully GC'd — it is not; only the per-record payload is.
+
+**Recommendation:** **acknowledge** — no change needed; just don't over-claim the GC
+extent in the decision memo. (Repointing Save/Clear to `deleteReport` would bound the
+keyspace too, but that touches the released keying contract and is explicitly out of scope.)
+
+### Finding 3 — DELETE joins an unlocked read-modify-write set on the report record
+
+**Severity:** info
+
+**Mechanism:** `DELETE_SCREENSHOT` does `getReport` → mutate → `setReport`/`deleteReport`
+with no lock, joining the released `addScreenshot`/`SET_NOTE`/`saveReport` mutators that
+already share this pattern. Two handlers interleaving at their `await` points (e.g. a
+keyboard-capture `addScreenshot`, whose `getReport` is at `background.js:283`, racing a
+popup `DELETE_SCREENSHOT`) both read the same pre-state and the second `setReport` wins →
+one mutation silently dropped (last-writer-wins). This is a **pre-existing** architectural
+property of the store (no IDB-level transactional read-modify-write), not introduced here;
+the window is small and the SW is single-threaded so it only manifests across an await.
+Flagged because this feature adds a new user-driven mutator to that set, slightly widening
+the surface. Not actionable at design time without a store-wide locking change (out of
+scope); recorded for conscious awareness.

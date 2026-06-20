@@ -219,3 +219,38 @@ delete/confirm/cancel spec) plus the mandatory `bt` smoke above. The message
 ## History
 
 - 2026-06-20 — created by frontend-architect (effort=2, depends on STORY-fe-001, STORY-fe-002)
+
+## Contrarian Findings
+
+### Finding 1 — The re-openable popup is the enabling surface for fe-002's mid-edit delete corruption
+
+**Severity:** info
+
+**Mechanism:** `reopen(index)` `window.close()`s on success (lines 71-74), but the popup
+can be **re-opened** by clicking the toolbar icon while the in-page editor overlay is still
+active on the page — at which point `refresh()` → `refreshGallery()` re-fetches the live
+grid and `confirmDelete(index)` offers a working delete. That re-opened-popup delete is the
+concrete trigger for STORY-fe-002 Finding 1 (severity **block**: the in-flight re-save then
+overwrites the wrong record). This story is presentational and holds no business logic, so
+it is **not** the fix site — the fix is identity-addressing in fe-001/fe-002. Recorded here
+only so the FE engineer who lands all three stories sees the cross-story linkage and does
+**not** "solve" it presentationally (e.g. by hiding the grid mid-edit, which the popup can't
+detect anyway — it has no signal that an overlay is open).
+
+### Finding 2 — `GET_REPORT_SCREENSHOTS` returns full-resolution PNGs for every shot; no count cap or downscale
+
+**Severity:** info
+
+**Mechanism:** Tiles render `shot.thumbnail` = the stored `annotated || original`
+**full-resolution** base64 PNG, scaled down by CSS only (fe-001 explicitly forgoes any
+SW-side resize). A report's `screenshots[]` is appended unboundedly by capture with no count
+cap, so a large report (many full-page / high-DPI shots) ships tens of MB of base64 in one
+`chrome.runtime.sendMessage` response and mounts that many full-res `<img>` elements in a
+~280px popup — potentially slow/janky to open. Fine for typical reports (a handful of
+shots) and a defensible simplicity call; recorded so the team consciously accepts the
+"reports stay small" assumption. If it ever bites, the cheap mitigation is an
+`OffscreenCanvas` downscale in the fetch handler (fe-001) returning a small thumbnail
+data-URL, leaving full-res `original`/`annotated` in the store for re-open.
+
+**Recommendation:** **acknowledge** — no change for typical use; revisit (downscale in
+fe-001's projection) only if large-report popup latency is observed.

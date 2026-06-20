@@ -1,7 +1,7 @@
 ---
 type: epic
 slug: snapdeck-ux-improvements
-status: planning
+status: released
 created_at: 2026-06-18T00:00:00Z
 last_run_id: run-20260619-021434-24507
 # Cross-epic graph (consumed by scripts/check-epic-deps.sh).
@@ -190,3 +190,7 @@ rewrite the same region of `editor.js` in parallel.
   hypothesis assumes image + model + viewport + console/network buffers fully
   reproduce the editor. If any capture-time state beyond that turns out to be
   required, the gallery re-edit feature's scope shifts — flag at decomposition.
+
+## History
+
+2026-06-20T18:55:35Z — BOSS: status: 'planning' -> 'released' [FORCED] (wave-paced flow advanced features, not epic meta-status; all 8/8 features released via PRs #1/#2/#3 (5526403, 8c340a6, cd6c0cb); defects solved; node --test 144/144 + controller 5/5 (forced epic-level stamp to reflect reality))
